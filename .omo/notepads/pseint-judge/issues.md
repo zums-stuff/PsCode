@@ -49,3 +49,7 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 ## Todo 12 — verdict classification (2026-09-05)
 
 - **No issues found**: all 13 verdict tests passed on first green run after the red phase; ruff clean. The SPEC §(i) taxonomy + draft M1/M2 + DOMjudge wall-vs-cpu practice were unambiguous; no interpretation questions arose.
+
+## Todo 13 — complexity bands (2026-09-05)
+
+- **No issues found**: all 21 complexity tests passed on first green run after the red phase; ruff clean. The SPEC §(k) coefficient table + band thresholds + hard-budget formula were unambiguous; no interpretation questions arose.

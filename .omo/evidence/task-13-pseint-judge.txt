@@ -1,0 +1,87 @@
+# Task 13 — Complexity bands — Evidence
+
+**Date:** 2026-09-05
+**Todo:** 13 (plan lines 213-219)
+**Commit:** (recorded below after commit)
+
+## Deliverables
+- `judge/src/pseint_judge/complexity.py` — expected_steps / band / hard_step_budget / n_estimate
+- `judge/tests/test_complexity.py` — TDD suite (21 tests)
+
+## SPEC §(k) NORMATIVE coefficient table (implemented EXACTLY)
+| Complexity | Formula | n=10 example |
+|------------|---------|--------------|
+| O(1)       | 50      | 50           |
+| O(log n)   | 50·log2(n+2) | ≈195    |
+| O(n)       | 20n+50  | 250          |
+| O(n log n) | 20n·log2(n+2)+50 | ≈2050 |
+| O(n²)      | 5n²+50  | 550          |
+| O(n³)      | 2n³+50  | 2050         |
+| O(2ⁿ)      | 2^(n+4) | 16384        |
+| other      | step_budget REQUIRED (no auto formula) | — |
+
+Logs floored to integer via `math.floor`.
+
+## Band boundaries (SPEC §(k))
+- OK: ratio < 1.5
+- ALTA: 1.5 ≤ ratio < 4.0
+- EXCESIVA: ratio ≥ 4.0
+- Boundary tests: ratio 1.5 → ALTA (not OK); ratio 4.0 → EXCESIVA (not ALTA).
+
+## Hard step budget (SPEC §(k))
+- Default: 2*expected + 1000
+- `problem.step_budget` overrides when provided.
+- This is the TLE(step) threshold feeding todo 12's ERR_STEP_LIMIT path.
+
+## "other" handling
+- No auto formula. `expected_steps("other", n)` raises `ValueError`; caller must
+  supply `problem.step_budget`. Documented in the module docstring.
+
+## Band is a SIGNALED metric only (MUST NOT fail AC)
+- Documented in module docstring: correctness first; the band never changes the
+  verdict. A high band (EXCESIVA) still yields AC if output is correct and the
+  hard step budget is not exceeded.
+
+## Test results (EXACT integer assertions from the SPEC table)
+```
+$ ../.venv/bin/python -m pytest tests/test_complexity.py -q
+21 passed in 0.16s
+```
+- O(1) any n → 50
+- O(n) n=10 → 250
+- O(n²) n=10 → 550
+- O(2ⁿ) n=3 → 128 (2^7)
+- O(log n) n=6 → 50·floor(log2(8)) = 150
+- O(n log n) n=6 → 20·6·floor(log2(8))+50 = 410
+- O(n³) n=5 → 2·125+50 = 300
+- "other" without step_budget → ValueError
+- band: 1.0→OK, 1.5→ALTA, 4.0→EXCESIVA
+- hard_step_budget: expected=100 → 1200; override 500 → 500
+- n_estimate: "1 2 3\n" → 3; "" → 0; "1  2\n3 4\n" → 4
+
+## Planted bubble-vs-merge proof (n=500)
+- bubble O(n²): expected = 5·250000+50 = 1,250,050
+- merge O(n log n): expected = 20·500·floor(log2(502))+50 = 20·500·8+50 = 80,050
+- ratio ≈ 15.6x (asserted > 15)
+- A bubble implementation running ~1.3M steps:
+  - vs O(n²) expectation → ratio ~1.04 → **OK**
+  - vs O(n log n) expectation → ratio ~16 → **EXCESIVA**
+- Bands separate correctly by expected complexity.
+
+## Full judge suite (tree always green)
+```
+$ ../.venv/bin/python -m pytest tests/ -q
+54 passed in 1.56s
+```
+
+## Ruff
+```
+$ ../.venv/bin/ruff check src
+All checks passed!
+```
+
+## Scope guardrails honored
+- Did NOT change verdicts (band is signaled only).
+- Did NOT implement scoring (todo 14).
+- Did NOT modify runner.py, compare.py, verdicts.py, or any engine/ file.
+- No --dry-run used as evidence.

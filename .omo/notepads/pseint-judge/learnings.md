@@ -84,3 +84,10 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **`wall_limit_ms=None` disables the wall check**: the classifier hardcodes no defaults (todo 15 constants module owns 5s/3s/128MB); the caller passes the problem's limit. Keeps the module pure and testable.
 - **Priority edges tested pairwise**: the 6-level table has 5 adjacent edges; tests cover all of them (CE passthrough, step>wall, wall>RE, RE>WA, step>comparison) plus the closed-taxonomy constant `VERDICTS`.
 - **CE passthrough is defensive**: the runner short-circuits CE at submission level (no CaseResult ever has verdict CE from the runner), but the classifier handles it so the taxonomy is complete in one module and todo 14 has a uniform consumption point.
+
+## Todo 13 — complexity bands (2026-09-05)
+
+- **SPEC §(k) is fully self-contained**: the coefficient table, band thresholds, hard-budget formula, and n_estimate rule are all pinned in the spec — no interpretation questions arose. Implemented the table verbatim with `math.floor` on logs.
+- **"other" complexity → ValueError**: no auto formula; the caller must supply `problem.step_budget`. Raising (vs returning None) makes the contract explicit and testable with `pytest.raises`.
+- **Band is a pure function of (steps, expected)**: `band()` needs no problem context — keeps complexity.py independent of verdicts.py (todo 14 wires them together). The planted bubble-vs-merge test proves the same step count lands in different bands depending on the expected complexity.
+- **n_estimate is just `len(input_text.split())`**: whitespace-token count, empty → 0. Trivial but pinned by SPEC §k.
