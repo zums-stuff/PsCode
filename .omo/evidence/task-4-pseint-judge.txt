@@ -96,3 +96,21 @@ NOTES
 COMMIT
 ------
   43123cc feat(engine): parser and AST
+
+FIX (review round 1)
+--------------------
+  - Array element assignment: a[1] <- 5 and a[1, 2] <- 5 now parse to
+    Assignment(target=ArrayIndex(...)); ArrayIndex gained an `indices`
+    list field for extra dimensions (first index stays in `index`).
+    Multi-dim indexing in expression position (x <- a[1, 2]) also works.
+  - Bare Leer (no arguments) now parses to Leer(args=[]); args are only
+    parsed when the next token can start an expression (_EXPR_START set:
+    literals, identifier, parens, brackets, unary ops, built-in functions).
+  - Regression tests added: array element assignment (single/multi-dim,
+    expression index, nested in Si), multi-dim index expression, bare Leer
+    (mid-block and at end), Leer with args unchanged.
+  - Verification: 279 passed (272 + 7 new), ruff clean.
+
+COMMIT
+------
+  3cbb94a fix(engine): parser array assignment and bare Leer
