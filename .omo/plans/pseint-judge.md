@@ -113,7 +113,7 @@ Your next move: approve to start executing the plan (the worker will build it in
 <!-- APPEND TASK BATCHES BELOW THIS LINE WITH edit/apply_patch - never rewrite the headers above. -->
 
 ### Wave 1 - Spec + interpreter core (C1)
-- [ ] 1. Bootstrap the monorepo
+- [x] 1. Bootstrap the monorepo
   What to do / Must NOT do: `git init` in /home/zum/Documents/Aula CISCO/Interprete; create layout spec/ engine/ judge/ web/api/ web/frontend/ infra/ scripts/; engine/pyproject.toml (name pseint-engine, requires-python >=3.11, no runtime deps, dev = pytest+hypothesis+ruff); judge/pyproject.toml (pseint-judge, deps: engine); root .gitignore (venv, __pycache__, .venv, node_modules, dist, .omo/evidence); README.md stub with architecture one-paragraph. MUST NOT scaffold web apps yet (Vite comes in Wave 5 todo 27); no CI config.
   Parallelization: Wave 1 | Blocked by: - | Blocks: 2-9
   References (executor has NO interview context - be exhaustive): `.omo/drafts/pseint-judge.md` (Decisions D4/D7, Scope IN); skill template at /home/zum/.cache/opencode/packages/oh-my-openagent@latest/node_modules/oh-my-openagent/dist/skills/ulw-plan/references/full-workflow.md (plan contract)
@@ -121,7 +121,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios (name the exact tool + invocation): happy: `cd engine && python -m pytest` → exit 0; failure: remove pyproject build config → `pip install -e .` fails with clear error before proceeding. Evidence .omo/evidence/task-1-pseint-judge.txt
   Commit: Y | chore(repo): bootstrap pseint-judge monorepo
 
-- [ ] 2. Write the pinned dialect spec (SPEC.md)
+- [x] 2. Write the pinned dialect spec (SPEC.md)
   What to do / Must NOT do: Write spec/SPEC.md with MANDATORY sections: (a) grammar EBNF for the whole language; (b) keyword table incl. flexible-syntax synonyms (y/o/no for &|~, Dimensionar, HACER...MIENTRAS QUE, Sin Saltar/Sin Bajar, Segun variants) and accents/eñes-in-identifiers rule; (c) types + conversion matrix (Entero/Real/Logico/Caracter/Cadena; Definir optional under flexible profile, type inferred otherwise; int/int -> real; type mismatch -> RE); (d) operator precedence (algebraic, relational, logical; parens); (e) Escribir formatting table (numbers: integer-as-int, real shortest-roundtrip float with '.', bools Verdadero/Falso, strings raw; Sin Saltar semantics; multi-arg no separator) + 3 golden examples; (f) Leer parsing rules (token split, type inference, EOF -> RE 'fin de entrada inesperado'); (g) step-counting rules table (what counts as 1 step: each statement, each condition eval, each iteration check, each builtin call, each Escribir arg; recursive calls count callee body); (h) deterministic runtime: AZAR seeded per run via test_case.seed (default 0); FechaActual/HoraActual deterministic stubs (fixed ISO 2026-01-01T12:00:00); Esperar no-op costing 1 step; (i) runtime-error taxonomy with codes (ERR_DIV0, ERR_TYPE, ERR_BOUNDS, ERR_DIM, ERR_RECURSION, ERR_EOF_INPUT, ERR_STEP_LIMIT, ERR_OUTPUT_CAP); (j) comparison contract: split \n, strip \r, rstrip each line, compare; leading whitespace + blank lines significant; token mode = split \s+; (k) complexity annotation schema: expected_complexity enum {O(1),O(log n),O(n),O(n log n),O(n^2),O(n^3),O(2^n),other}, step_budget override optional; band formula expected = FORMULA(complexity, n_estimate) with n_estimate = whitespace-token count of input; COEFFICIENT TABLE (normative): O(1)=50 · O(log n)=50·log2(n+2) · O(n)=20n+50 · O(n log n)=20n·log2(n+2)+50 · O(n^2)=5n^2+50 · O(n^3)=2n^3+50 · O(2^n)=2^(n+4) · other ⇒ step_budget REQUIRED (no auto formula); logs floor to integer; band OK<1.5x, ALTA<4x, EXCESIVA else; hard step_budget = 2*expected + 1000. MUST NOT invent features absent from the official reference; every rule is the ONE rule the whole project follows.
   Parallelization: Wave 1 | Blocked by: 1 | Blocks: 3-9
   References: official syntax page https://pseint.sourceforge.net/index.php?page=pseudocodigo.php (fetched 2026-09-04; see Findings in draft); release-note facts https://pseint.sourceforge.net/?os=w32&page=actualizacion.php; `.omo/drafts/pseint-judge.md` M1-M6, M13; Diff-from-official decisions MUST be a dedicated section (deterministic type rules, AZAR seeding, formatting)
@@ -129,7 +129,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: automated checklist reads file and confirms section presence -> PASS; failure: a section missing -> script exits 1 listing it. Evidence .omo/evidence/task-2-pseint-judge.txt
   Commit: Y | docs(spec): pin PseInt dialect spec
 
-- [ ] 3. Implement the lexer with tests
+- [x] 3. Implement the lexer with tests
   What to do / Must NOT do: engine/src/pseint_engine/lexer.py: token types per SPEC (keywords + synonyms, identifiers w/ accents/eñes, integers, reals ('.' separator), strings with " and ' quotes, operators <- = == <> < > <= >= + - * / ^ % MOD & | ~ , ; ( ) :), // comments to EOL; case-insensitive keywords; reserved-word rule for identifiers; token positions (line, col) for error mapping. Must NOT do Unicode normalization of identifiers beyond NFC; must NOT collapse distinct spellings before the parser decides.
   Parallelization: Wave 1 | Blocked by: 2 | Blocks: 4
   References: spec/SPEC.md §grammar + §keywords; draft M5/M6; pytest 8.x for tests
@@ -137,7 +137,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: parametrized pass count matches table rows; failure: feed tokenizer an out-of-range error case (e.g., `1.2.3`) → parse-time error with correct line/col, test asserts it. Evidence .omo/evidence/task-3-pseint-judge.txt
   Commit: Y | feat(engine): lexer
 
-- [ ] 4. Implement the parser + AST with tests
+- [x] 4. Implement the parser + AST with tests
   What to do / Must NOT do: engine/src/pseint_engine/parser.py + ast_nodes.py: recursive-descent parser over the lexer; all statements and expressions per EBNF; nested structures; flexible variants (HACER...MIENTRAS QUE, Dimensionar, DE OTRO MODO, Sin Saltar suffix on Escribir, Con Paso on Para); API `parse(source: str) -> Program` raising `ParseError(code, message, line, col)`; public `parse(source)` returning Program on success. Cycle-limit on whitespace recovery (max 1000 tokens to fail fast). Must NOT implement semantic checks here (types/bounds are the evaluator's job).
   Parallelization: Wave 1 | Blocked by: 3 | Blocks: 5
   References: spec/SPEC.md EBNF; draft M1 (CE comes from this phase); golden corpus tier-1 files (created in todo 8) must parse
@@ -145,7 +145,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: parse all 10 tier-1 corpus .psc files → Program objects; failure: `Si x Entonces` without FinSi → ParseError with exact line/col; test asserts both. Evidence .omo/evidence/task-4-pseint-judge.txt
   Commit: Y | feat(engine): parser and AST
 
-- [ ] 5. Implement the evaluator core with tests
+- [x] 5. Implement the evaluator core with tests
   What to do / Must NOT do: engine/src/pseint_engine/evaluator.py + runtime.py: Env with scopes; implicit typing + SPEC conversion matrix enforcement; assignment; Escribir (formatting table exactly; Sin Saltar; multi-arg no separator) -> program output lines; Leer (token split, inference, EOF -> RE); Si/Segun/Mientras/Repetir/Para semantics; step counter increments exactly per SPEC §steps; recursion depth cap 500 (SPEC) -> RE ERR_RECURSION. Must NOT apply step budgets here (hard limit is a runner-level option; evaluator only counts).
   Parallelization: Wave 1 | Blocked by: 4 | Blocks: 6,7
   References: spec/SPEC.md §types §steps §formatting; draft M3/M6; 3 golden formatting examples from SPEC must pass verbatim
@@ -153,7 +153,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: run sum-of-n loop program steps == asserted count; failure: int division by zero -> ERR_DIV0 RE with message; tests assert both + metrics. Evidence .omo/evidence/task-5-pseint-judge.txt
   Commit: Y | feat(engine): evaluator core
 
-- [ ] 6. Implement SubProceso/Funcion, arrays, built-ins with tests
+- [x] 6. Implement SubProceso/Funcion, arrays, built-ins with tests
   What to do / Must NOT do: SubProceso/Funcion (params, Por Valor/Por Referencia; simple-by-value + arrays-by-reference defaults per official rules); recursion (respects depth cap); Dimension (max 3 dims, max elements 1_000_000 per array, per-run total array elements cap 4_000_000 -> ERR_DIM); built-ins exactly per SPEC list: RC ABS LN EXP SEN COS ATAN TRUNC REDON AZAR(seedable) + string/logical set pinned in SPEC (Longitud, SubCadena, Mayusculas, Minusculas, Concatenar, ConvertirANumero, ConvertirATexto); AZAR seeded deterministically. Must NOT add built-ins absent from SPEC.
   Parallelization: Wave 1 | Blocked by: 5 | Blocks: 7,8
   References: spec/SPEC.md §builtins §arrays; official examples (evoclub manual mirrors official behavior; treat as secondary); draft M4 (AZAR seed policy)
@@ -161,7 +161,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: recursive factorial(10) == 3628800 with steps recorded; failure: Dimension arreglo(10000000) -> ERR_DIM RE. Evidence .omo/evidence/task-6-pseint-judge.txt
   Commit: Y | feat(engine): subprocesos, arrays, built-ins
 
-- [ ] 7. Implement the CLI runner + JSON report contract + validate subcommand
+- [x] 7. Implement the CLI runner + JSON report contract + validate subcommand
   What to do / Must NOT do: engine CLI (console_scripts entry `pseint-engine`): `run <source.psc> [--input file] [--seed N] [--step-budget N] [--max-steps N] [--max-output-bytes N] [--max-array-elements N] [--report out.json]` — program stdout written to stdout (raw, no wrapping); report JSON to --report with {steps, error: {code,message,line,col}|null, exit_ok, output_bytes}; `validate <source.psc>` prints JSON {ok, errors:[{code,message,line,col}]} (consumed by frontend inline errors, todo 29). Input sources: --input <file> when given, else stdin — the single contract the worker/sandbox wrapper (todo 34) uses. MUST NOT print report to stdout (stdout belongs to program output). Deterministic exit codes: 0 ok, 2 runtime-error, 3 step-limit, 4 output-cap.
   Parallelization: Wave 1 | Blocked by: 5,6 | Blocks: 8,9,10,29
   References: spec/SPEC.md runtime-error taxonomy; draft M3 (budgets); exact CLI flags become the single contract used by worker (todo 34) and validate endpoint (todo 29)
@@ -169,7 +169,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: `echo "1 2" | pseint-engine run suma.psc --seed 0 --report r.json` → stdout matches .out, r.json steps>0; failure: step-budget exceeded → exit 3, report.error.code=ERR_STEP_LIMIT. Evidence .omo/evidence/task-7-pseint-judge.txt
   Commit: Y | feat(engine): CLI runner and report contract
 
-- [ ] 8. Build the golden corpus + harness
+- [x] 8. Build the golden corpus + harness
   What to do / Must NOT do: engine/tests/corpus/ with >=25 cases: `name.psc` (source), `name.in` (input), `name.out` (expected output), `name.json` (expected report subset: steps exact or range, error|null); coverage: all control structures, arrays/matrices, recursion, all built-ins incl. pinned AZAR sequence, flexible synonyms, Escribir formatting goldens (from SPEC), negative cases (div0, type error, bounds, EOF input, recursion cap, step-limit, output-cap — >=5 negative); harness `tests/test_corpus.py` discovers corpus/ and asserts stdout byte-exact + report fields; runner subcommand `pseint-engine corpus` optional. MUST NOT add a case without a one-line comment linking it to a SPEC section. Optional non-blocking hardening: 3-5 manual differential runs against a real PSeInt binary on the developer's machine, with each divergence recorded in SPEC Diff-from-official (documented as optional; not required for any gate).
   Parallelization: Wave 1 | Blocked by: 6,7 | Blocks: 9
   References: spec/SPEC.md (each case cites its section); draft M3 (bands), M4 (AZAR pin), M5 (comparison)
@@ -177,7 +177,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: full corpus run → 25 passed, 0 failed; failure: mutate one .out by a trailing space → that single case fails, proving byte-exactness. Evidence .omo/evidence/task-8-pseint-judge.txt
   Commit: Y | test(engine): golden corpus
 
-- [ ] 9. Harden the engine (property + edge tests)
+- [x] 9. Harden the engine (property + edge tests)
   What to do / Must NOT do: hypothesis property tests on expressions (bounded depth) asserting no crash beyond documented RE; edge matrix: negative Mod, int/float division, huge string ops, deep recursion (cap), array bounds sweep, Leer EOF, output cap enforcement, step budget enforcement; each case must terminate <2s. MUST NOT test hangs (budgets guarantee termination) without also proving the budget fires.
   Parallelization: Wave 1 | Blocked by: 8 | Blocks: (wave gate) 10
   References: spec/SPEC.md §recovery/error taxonomy; draft M13 (output cap 1MB)
@@ -186,7 +186,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   Commit: Y | test(engine): hardening and property tests
 
 ### Wave 2 - Judge + scoring engine (C2)
-- [ ] 10. Implement submission runner (parse-once, run-N)
+- [x] 10. Implement submission runner (parse-once, run-N)
   What to do / Must NOT do: judge/src/pseint_judge/runner.py: `judge_submission(source, problem, test_cases, mode)` — parse ONCE (via engine parse()) → CE short-circuits (M1, no test cases run); per test case invoke engine CLI as subprocess with per-case seed + budgets; collect {verdict, steps, wall_ms, cpu_ms, output} per case; lazy rules (M2): CF-style stops at first non-AC; IOI-style + assignments run ALL cases; practice-mode passthrough (single run w/ user input, no grading). Must NOT run any test case when parse fails.
   Parallelization: Wave 2 | Blocked by: 7,8 | Blocks: 11-15 | Can parallelize with: 16
   References: spec/SPEC.md comparison + errors; draft M1/M2; CLI contract from todo 7
@@ -194,7 +194,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: 3-case problem, 2nd case WA in CF mode → 2 results only; failure: same in IOI mode → 3 results (partial points). Evidence .omo/evidence/task-10-pseint-judge.txt
   Commit: Y | feat(judge): submission runner
 
-- [ ] 11. Implement output comparison
+- [x] 11. Implement output comparison
   What to do / Must NOT do: judge/src/pseint_judge/compare.py: exact-line mode (split \n, strip \r, rstrip each line, compare; leading whitespace + blank lines significant) and token mode (split \s+); returns {equal, first_diff_line, expected_line, got_line}; compare_mode per problem (default exact). MUST NOT trim trailing blank lines below the program's printed content (a trailing newline from the last Escribir is part of output).
   Parallelization: Wave 2 | Blocked by: 10 | Blocks: 12
   References: spec/SPEC.md §comparison; draft M5
@@ -202,7 +202,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: exact-match golden passes; failure: expected "5\n" got "5" → not equal (documented); both asserted. Evidence .omo/evidence/task-11-pseint-judge.txt
   Commit: Y | feat(judge): output comparison
 
-- [ ] 12. Implement verdict classification
+- [x] 12. Implement verdict classification
   What to do / Must NOT do: verdicts.py: map engine report codes + comparison + budget outcomes to AC/WA/TLE(step)/TLE(wall, worker-side)/RE(code)/CE; priority table documented in module docstring; per-case verdict record. Must NOT emit verdicts outside this taxonomy.
   Parallelization: Wave 2 | Blocked by: 10,11 | Blocks: 13,14
   References: spec/SPEC.md error taxonomy; draft M1/M2; DOMjudge wall-vs-cpu practice (draft Findings)
@@ -210,7 +210,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: correct output → AC with steps; failure: engine ERR_DIV0 + wrong output → RE (priority) not WA. Evidence .omo/evidence/task-12-pseint-judge.txt
   Commit: Y | feat(judge): verdict classification
 
-- [ ] 13. Implement complexity bands
+- [x] 13. Implement complexity bands
   What to do / Must NOT do: complexity.py: per-test expected steps = FORMULA(expected_complexity, n_estimate) using the SPEC coefficient table (todo 2 §k is NORMATIVE: O(1)=50, O(n)=20n+50, O(n^2)=5n^2+50, O(2^n)=2^(n+4), ...; 'other' requires problem.step_budget); band = steps/expected → OK (<1.5) / ALTA (<4) / EXCESIVA; hard step_budget = 2*expected + 1000 (or problem.step_budget override) → TLE(step). Output: per-case {steps, expected_steps, band}. Must NOT fail AC on high band (correctness first; band is a signaled metric).
   Parallelization: Wave 2 | Blocked by: 10,12,2 | Blocks: 14
   References: spec/SPEC.md §complexity schema; draft M3
@@ -218,7 +218,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: O(n^2) impl on n=300 → EXCESIVA band but AC verdict; failure: step_budget exceeded → TLE(step) regardless of output. Evidence .omo/evidence/task-13-pseint-judge.txt
   Commit: Y | feat(judge): complexity bands
 
-- [ ] 14. Implement scoring engines + scoreboard
+- [x] 14. Implement scoring engines + scoreboard
   What to do / Must NOT do: scoring.py + scoreboard.py: CF-style (problem solved iff any submission AC; penalty = sum(AC_time_min) + 20 × wrong attempts on solved problems; rank solves desc, penalty asc; teams: solve_time = first AC by any member, wrong attempts = union of team attempts); IOI-style (points = sum per problem of MAX points across submissions; rank points desc); assignment best (per problem: submission with max AC cases, tie-break min steps; resubmissions allowed until deadline); team IOI = max over members. Scoreboard recompute on ANY verdict/points change (CF: AC flip; IOI: per-case point delta; assignment: best-rating change) + nightly batch reconcile (M12). Pinned scoring edges: penalty time = whole minutes since contest start_at; wrong-attempt count EXCLUDES attempts before start_at and attempts after a problem's first AC (and infra retries); team roster locked once the contest starts (no mid-contest edits). Must NOT mix modes; must NOT freeze scoreboards.
   Parallelization: Wave 2 | Blocked by: 12,13 | Blocks: 15
   References: draft D8/D14/D16, M12; CF/IOI scoring norms (draft Findings: DOMjudge/CMS)
@@ -226,7 +226,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: two students, one solves 2 with 40min penalty vs other solves 1 in 5min → correct order; failure: team member submits WA then teammate AC → solve time = first AC, penalty includes WA. Evidence .omo/evidence/task-14-pseint-judge.txt
   Commit: Y | feat(judge): scoring and scoreboard
 
-- [ ] 15. Wire determinism + budgets end-to-end
+- [x] 15. Wire determinism + budgets end-to-end
   What to do / Must NOT do: budget/source/input constants module (source ≤64KB, input ≤64KB, output cap 1MB, wall 5s/cpu 3s/mem 128MB defaults, per-problem overrides); per-run seed plumbing (test_case.seed → engine --seed; contest/assignment runs default 0); rejudge stability test (identical submission twice → byte-identical report+verdicts); practice-mode quota constants (10 runs/min/user). Must NOT randomize anything; must NOT add SSE fallback.
   Parallelization: Wave 2 | Blocked by: 10,14 | Blocks: (wave gate), 18
   References: draft M4/M13/D9; juggling 5: worker consumes these constants (todo 34)

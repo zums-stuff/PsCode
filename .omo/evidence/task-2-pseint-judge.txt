@@ -79,4 +79,4 @@ Re-verification after fix:
 - No TODO/placeholder sections ✓
 - All 13 sections present ✓
 
-New commit: 51bd983 docs(spec): fix EBNF program rule - optional param brackets
+New commit: 7024978 docs(spec): fix EBNF program rule - optional param brackets
