@@ -1,0 +1,21 @@
+# Minimal local stack for todo 16: postgres only.
+# Todo 36 expands this to the full stack (redis/api/worker/caddy).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pseint
+      POSTGRES_PASSWORD: pseint
+      POSTGRES_DB: pseint
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pseint -d pseint"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
