@@ -15,9 +15,9 @@ COEFFICIENT TABLE (NORMATIVE — single source of truth, SPEC §(k))
 | Complexity | Formula                    | Example (n=10) |
 |------------|----------------------------|----------------|
 | O(1)       | 50                         | 50             |
-| O(log n)   | 50 · log2(n + 2)           | ≈ 195          |
+| O(log n)   | 50 · log2(n + 2)           | 150            |
 | O(n)       | 20n + 50                   | 250            |
-| O(n log n) | 20n · log2(n + 2) + 50     | ≈ 2050         |
+| O(n log n) | 20n · log2(n + 2) + 50     | 650            |
 | O(n²)      | 5n² + 50                   | 550            |
 | O(n³)      | 2n³ + 50                   | 2050           |
 | O(2ⁿ)      | 2^(n+4)                    | 16384          |
