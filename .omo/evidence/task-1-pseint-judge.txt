@@ -1,0 +1,69 @@
+Task 1: Bootstrap the monorepo — Evidence Receipt
+===================================================
+Date: 2026-09-05
+Commit: 156c8d0 chore(repo): bootstrap pseint-judge monorepo
+
+VERIFICATION RESULTS
+====================
+
+1. cd engine && python -m pytest (exit 5 = no tests collected — EXPECTED)
+-------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/zum/Documents/Aula CISCO/Interprete/engine
+configfile: pyproject.toml
+plugins: hypothesis-6.167.1
+collected 0 items
+
+============================ no tests ran in 0.72s =============================
+EXIT_CODE=5
+
+2. cd engine && ruff check src (exit 0 — PASS)
+-------------------------
+All checks passed!
+EXIT_CODE=0
+
+3. cd judge && ruff check src (exit 0 — PASS)
+-------------------------
+All checks passed!
+EXIT_CODE=0
+
+4. git status --porcelain (exit 0, empty output — PASS, tree clean)
+-------------------------
+EXIT_CODE=0
+
+5. pip list | grep pseint (both packages installed — PASS)
+-------------------------
+pseint-engine    0.1.0   /home/zum/Documents/Aula CISCO/Interprete/engine
+pseint-judge     0.1.0   /home/zum/Documents/Aula CISCO/Interprete/judge
+
+DIRECTORY LAYOUT
+================
+spec/                  (empty — placeholder for SPEC.md)
+engine/                (pyproject.toml + src/__init__.py)
+judge/                 (pyproject.toml + src/__init__.py)
+web/api/               (empty — placeholder)
+web/frontend/          (empty — placeholder)
+infra/                 (empty — placeholder)
+scripts/               (empty — placeholder)
+AGENTS.md              (verbatim copy from .omo/AGENTS.md)
+README.md              (one-paragraph architecture description)
+.gitignore             (venv, __pycache__, .venv, node_modules, dist, .omo/evidence)
+
+FILES IN COMMIT (32 files)
+===========================
+.gitignore, AGENTS.md, README.md
+engine/pyproject.toml, engine/src/__init__.py
+judge/pyproject.toml, judge/src/__init__.py
+.omo/* (existing plan/draft/notepad/run-continuation files — unchanged)
+
+COMMIT
+======
+156c8d0 chore(repo): bootstrap pseint-judge monorepo
+
+NOTES
+=====
+- build-backend fixed to "setuptools.build_meta" (was "setuptools.backends._legacy:_Backend" which failed)
+- judge dependency uses "pseint-engine" by name (file:// relative URI unsupported by pip; works via editable install in shared venv)
+- pytest exit code 5 = "no tests collected" which is the expected behavior for empty test suite
+- venv created at .venv/ (not committed; gitignored)
