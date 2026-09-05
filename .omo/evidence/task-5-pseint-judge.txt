@@ -1,0 +1,165 @@
+TASK 5 EVIDENCE — evaluator core
+================================
+Date: 2026-09-05
+Plan: .omo/plans/pseint-judge.md (lines 148-154)
+Files:
+  - engine/src/pseint_engine/runtime.py   (new)
+  - engine/src/pseint_engine/evaluator.py (new)
+  - engine/tests/test_evaluator.py        (new)
+
+TEST RESULTS
+------------
+  pytest tests/test_evaluator.py -q  ->  112 passed
+  pytest tests/ (full suite)          ->  391 passed (279 prior + 112 new)
+  ruff check src                      ->  All checks passed
+  ruff check tests/test_evaluator.py  ->  All checks passed
+
+CONTROL-STRUCTURE COVERAGE (test_evaluator.py)
+----------------------------------------------
+  Si/Entonces/Sino:        then branch, else branch, no-else, nested in Para
+  Segun:                   matching case, De Otro Modo default, no-match-no-default
+  Mientras:                loop, condition-false-on-first-check (body never runs)
+  Repetir/Hasta Que:       loop
+  Para:                    plain, Con Paso, start>end (does not run)
+  HACER...MIENTRAS QUE:    loop
+  Esperar:                 no-op
+  Limpiar Pantalla:        no-op
+  Nested:                  Para > Si > Sino
+
+CONVERSION-MATRIX ROW COVERAGE (SPEC §(c)) — one test per row
+--------------------------------------------------------------
+  Entero->Real (exact)            test_entero_to_real
+  Entero->Logico (0/non-zero)     test_entero_to_logico
+  Entero->Caracter (ASCII)        test_entero_to_caracter
+  Entero->Cadena (decimal repr)   test_entero_to_cadena
+  Real->Entero (trunc)            test_real_to_entero_truncates
+  Real->Logico (0.0/non-zero)     test_real_to_logico
+  Real->Caracter (trunc+ASCII)    test_real_to_caracter_truncates_first
+  Real->Cadena (shortest roundtrip) test_real_to_cadena
+  Logico->Entero (1/0)            test_logico_to_entero
+  Logico->Real (1.0/0.0)          test_logico_to_real
+  Logico->Caracter ("Verdadero"/"Falso" literal per matrix) test_logico_to_caracter_per_matrix
+  Logico->Cadena                  test_logico_to_cadena
+  Caracter->Entero (ASCII)        test_caracter_to_entero_ascii
+  Caracter->Real (ASCII)          test_caracter_to_real_ascii
+  Caracter->Cadena                test_caracter_to_cadena
+  Cadena->Entero (parse, RE if fail) test_cadena_to_entero_parse / _parse_fail
+  Cadena->Real (parse, RE if fail)   test_cadena_to_real_parse / _parse_fail
+  Cadena->Logico ("Verdadero"/"Falso", else RE) test_cadena_to_logico / _parse_fail
+  Cadena->Caracter (first char)   test_cadena_to_caracter_takes_first_char
+  Caracter->Logico ("—" not allowed -> ERR_TYPE) test_caracter_to_logico_is_not_allowed
+  Caracter value keeps its type through expressions (c -> Entero = ASCII 65)
+                                  test_caracter_value_flows_through_expression_with_declared_type
+
+ARITHMETIC RULES (SPEC §(c))
+----------------------------
+  int/int -> real (5/2 = 2.5)     test_int_divided_by_int_is_real
+  int+int -> int, int*int -> int  test_int_plus_int_is_int, test_int_times_int_is_int
+  int OP real -> real             test_int_op_real_is_real
+  MOD/% on reals truncates first  test_mod_on_reals_truncates_operands
+  MOD by zero -> ERR_DIV0         test_mod_by_zero_is_err_div0
+  / by zero (literal + variable)  test_division_by_zero_is_err_div0, _variable
+  type mismatch -> ERR_TYPE       test_type_mismatch_in_operation_is_err_type
+  & | on non-Logico -> ERR_TYPE   test_logical_operator_on_non_logico_is_err_type
+  & | ~ relational ops, ^, unary - all covered
+
+GOLDEN FORMATTING (SPEC §(e)) — verbatim
+----------------------------------------
+  Example 1 (Entero/Real):  "42\n3.14\n"        test_golden_example_1_integer_and_real
+  Example 2 (Sin Saltar):   "Resultado: 100\n"  test_golden_example_2_sin_saltar_multi_arg
+  Example 3 (Logico/Cadena):"Verdadero\nHola Mundo\n" test_golden_example_3_boolean_and_string
+  Real shortest roundtrip:  2.0 -> "2.0", 0.5 -> "0.5" (repr(float) reference)
+  Multi-arg NO separator:   "a","b","c" -> "abc"
+  Sin Saltar suppresses newline; Caracter raw; Logico Verdadero/Falso
+
+LEER (SPEC §(f))
+----------------
+  Token split on \s+, per-variable type inference, extra tokens discarded,
+  EOF -> ERR_EOF_INPUT "fin de entrada inesperado", bare Leer discards one
+  line (line-aware token stream), tokens cross line boundaries, Logico
+  case-insensitive, Caracter requires single char, Entero rejects non-int,
+  Real accepts integer tokens, Cadena token as-is.
+
+STEP-COUNT ASSERTIONS (SPEC §(g)) — exact counts
+------------------------------------------------
+  simple assign + Escribir            = 3
+  sum-of-n Mientras (n=3)             = 26
+  Para 1..3 with body s<-s+i          = 17
+  Si with operator condition          = 6
+  Segun (match at case 2 of 3)        = 6
+  Repetir (3 iterations)              = 20
+  HACER...MIENTRAS QUE (3 iterations) = 20
+  Escribir a,b,c                      = 4
+  Leer a,b                            = 3
+  Esperar                             = 1
+  Limpiar Pantalla                    = 1
+  operator eval (a + b * c)           = 6 total (3 assigns + 1 stmt + 2 ops)
+  Definir counts as a statement       = 8 (golden example 1)
+
+RECURSION CAP (SPEC §(i) + Diff-from-Official #15)
+--------------------------------------------------
+  Cap = 1000 frames (SPEC authoritative; plan text says 500).
+  test_recursion_cap_allows_1000_frames          -> no error
+  test_recursion_cap_raises_err_recursion_at_1001 -> ERR_RECURSION
+  test_recursion_cap_exit_frame_releases_slot    -> _exit_frame frees a slot
+  NOTE: SubProceso/Funcion execution is todo 6, so the cap mechanism is
+  exercised directly via Evaluator._enter_frame/_exit_frame (white-box).
+
+NOT-YET-IMPLEMENTED (todo 6) — clear RE, never a Python crash
+-------------------------------------------------------------
+  a[1] <- 5 (ArrayIndex target)  -> ERR_DIM "arrays no implementados (todo 6)"
+  x <- a[1] (ArrayIndex read)    -> ERR_DIM
+  Dimension a[10]                -> ERR_DIM
+  AZAR(10) (FunctionCall)        -> ERR_TYPE "función no implementada (todo 6)"
+  saludar() (SubProcCall)        -> ERR_TYPE
+  SubProceso definition          -> no-op (declaration), main body runs
+  Retornar at top level          -> ERR_TYPE
+
+INTERPRETATION DECISIONS (documented; corpus todo 8 will pin exact behavior)
+----------------------------------------------------------------------------
+  1. STEP-COUNT AMBIGUITY (SPEC §(g)): the table says "Each operator
+     evaluation within an expression costs 1 step" and its example claims
+     `a + b * c` costs 3 steps. The literal rule (each operator NODE
+     evaluated = 1 step) gives 2 steps for `a + b * c`. We implement the
+     LITERAL rule (2 operator steps) and record the discrepancy here; the
+     corpus (todo 8) will pin the exact behavior. test_steps_operator_evaluation
+     asserts 2 operator steps.
+  2. Para step model: entry = 1 step (statement); per iteration = 1 step
+     (iteration check) + body steps + 1 step (implicit increment); final
+     failing check = 1 step. End/step expressions evaluated once at entry.
+     Loop variable type = declared type, else Real if any bound/step is
+     Real, else Entero; incremented value converted back to that type.
+     Bidirectional: step >= 0 loops while var <= end; step < 0 while var >= end.
+  3. Segun: expr evaluated once (must be Entero, else ERR_TYPE); each
+     integer case check = 1 step; De Otro Modo has no condition check (0
+     steps); cases after the match are not checked.
+  4. StringLiteral typing: SPEC §(a) says character literals are
+     double-quoted single chars, so a 1-char string literal is typed
+     Caracter, multi-char is Cadena.
+  5. Cadena->Logico conversion is exact-match ("Verdadero"/"Falso"); Leer
+     Logico parsing is case-insensitive per §(f).
+  6. Numeric token grammar for Leer/conversion: [+-]?\d+ (Entero) and
+     [+-]?\d+\.\d+ (Real) — no exponent notation, matching SPEC §(a)
+     literal grammar. int()/float() are NOT used directly for parsing.
+  7. Real formatting = repr(float) verbatim (shortest roundtrip). For
+     values where repr produces exponent notation (e.g. 1e+20) the repr
+     output is used as-is; corpus will pin.
+  8. MOD sign convention: Python's % (result non-negative for positive
+     divisor). int/int -> real via Python's true division.
+  9. ^ (power): int ** int with non-negative exponent -> Entero, else Real.
+  10. Conditions must be Logico (no implicit conversion); Segun expr must
+      be Entero. String ordering (< > <= >=) allowed lexicographically;
+      Logico ordering rejected (only = <> allowed).
+  11. Definir/SubProceso definitions count as 1 step each (they are
+      statements in the body). Definir with init assigns to the first name.
+      Conflicting Definir re-declaration -> ERR_TYPE.
+  12. Uninitialized/undefined variable reads -> ERR_TYPE with clear message.
+  13. No step budgets / output caps applied (runner-level, todo 7); the
+      evaluator only counts. seed param accepted but unused (AZAR is todo 6).
+  14. Leer input is line-aware: tokens are \s+-split per line; normal Leer
+      consumes tokens across lines (matching global \s+ split); bare Leer
+      discards the rest of the current line and moves to the next.
+
+COMMIT
+------
+  eb7507d feat(engine): evaluator core
