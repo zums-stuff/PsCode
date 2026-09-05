@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "active_work_id": "pseint-judge-5efe267e",
+  "works": {
+    "pseint-judge-5efe267e": {
+      "work_id": "pseint-judge-5efe267e",
+      "active_plan": "/home/zum/Documents/Aula CISCO/Interprete/.omo/plans/pseint-judge.md",
+      "plan_name": "pseint-judge",
+      "status": "active",
+      "started_at": "2026-09-05T12:12:15.996Z",
+      "updated_at": "2026-09-05T12:12:15.996Z",
+      "session_ids": [
+        "opencode:ses_f905f4768ffejakyoX58UQBpW4"
+      ],
+      "session_origins": {
+        "opencode:ses_f905f4768ffejakyoX58UQBpW4": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {}
+    }
+  },
+  "active_plan": "/home/zum/Documents/Aula CISCO/Interprete/.omo/plans/pseint-judge.md",
+  "started_at": "2026-09-05T12:12:15.996Z",
+  "status": "active",
+  "updated_at": "2026-09-05T12:12:15.996Z",
+  "session_ids": [
+    "opencode:ses_f905f4768ffejakyoX58UQBpW4"
+  ],
+  "session_origins": {
+    "opencode:ses_f905f4768ffejakyoX58UQBpW4": "direct"
+  },
+  "plan_name": "pseint-judge",
+  "task_sessions": {},
+  "agent": "atlas"
+}

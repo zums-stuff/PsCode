@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pseint-engine"
+version = "0.1.0"
+description = "Deterministic PseInt interpreter engine with step counter"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["pytest", "hypothesis", "ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
