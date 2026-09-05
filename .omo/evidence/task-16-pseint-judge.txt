@@ -1,0 +1,74 @@
+# Task 16 — PostgreSQL schema + Alembic migrations + bootstrap admin — Evidence
+
+**Date:** 2026-09-05
+**Plan todo:** 16 (plan lines 237-244)
+**Commit:** feat(api): schema and migrations — `3e367f4`
+
+## Files
+- `web/api/pyproject.toml` — package `pseint-api` (SQLAlchemy 2.x, alembic, psycopg[binary], pydantic v2, pwdlib[argon2]; dev: pytest, ruff)
+- `web/api/src/pseint_api/db.py` — `Base` (DeclarativeBase), `make_engine`, `make_session_factory`, default `engine`/`SessionLocal`
+- `web/api/src/pseint_api/config.py` — env-driven `DATABASE_URL` (default `postgresql+psycopg://pseint:pseint@localhost:5432/pseint`), `ADMIN_USERNAME`/`ADMIN_PASSWORD`, `SECRET_KEY` ≥32 chars invariant
+- `web/api/src/pseint_api/models.py` — all 16 tables (SQLAlchemy 2.x `Mapped`/`mapped_column`)
+- `web/api/src/pseint_api/bootstrap.py` — `bootstrap_admin(session)` (M12): env-driven, idempotent, pwdlib argon2 hash
+- `web/api/alembic.ini` + `web/api/alembic/env.py` + `web/api/alembic/versions/fc1fd6c4afd9_initial_schema.py` — initial revision creating ALL tables + bootstrap admin hook at end of `upgrade()`
+- `infra/docker-compose.yml` — MINIMAL: postgres:16-alpine only (volume, healthcheck, port 5432). Full stack is todo 36.
+- `web/api/tests/test_models.py` — 19 tests
+
+## Table list (16 — plan says "15" but the task's MUST DO enumerates 16: 11 base + 2 M12 + 3 implied)
+| # | Table | Notes |
+|---|---|---|
+| 1 | users | username unique, role enum admin/teacher/student, password_hash |
+| 2 | classes | code unique, teacher_id FK, anticheat_threshold float default 0.85 (todo 39) |
+| 3 | class_members | composite PK (class_id, user_id) — self-registration join |
+| 4 | problems | expected_complexity enum, step_budget int|null, compare_mode enum exact/token |
+| 5 | test_cases | seed int default 0, points, order, is_public bool default false, is_sample bool |
+| 6 | assignments | class_id + problem_id FK, deadline |
+| 7 | contests | scoring_mode cf/ioi, teams_enabled bool default false, start_at/end_at |
+| 8 | contest_problems | composite PK + order (problem set reorder) |
+| 9 | contest_participants | composite PK (register participant) |
+| 10 | contest_teams | M12 |
+| 11 | contest_team_members | composite PK, M12 |
+| 12 | runs | kind practice/assignment/contest, status queued/running/done/failed, summary_verdict AC/WA/TLE/RE/CE|null, steps, wall_ms, source, assignment_id/contest_id nullable FKs |
+| 13 | test_results | run_id FK, case_index, verdict, steps, wall_ms, output, error |
+| 14 | forum_threads | problem_id FK, contest_id nullable, pinned |
+| 15 | forum_posts | thread_id FK, parent_id nullable (replies), author_id FK |
+| 16 | similarity_pairs | run_a_id/run_b_id FK runs, score float, scope class/contest/problem |
+
+## Column highlights (plan-mandated)
+- `problems.expected_complexity` enum: `O(1), O(log n), O(n), O(n log n), O(n²), O(n³), O(2ⁿ), other` — **superscript forms** matching judge `complexity.py` (todo 13) and SPEC §(k) exactly. The task brief listed ASCII `O(n^2)` etc., but the judge compares these exact strings — a mismatch would break grading. Aligned with judge/SPEC (authoritative consumers).
+- `problems.step_budget` int|null; `problems.compare_mode` enum exact|token
+- `test_cases.seed` int default 0, `points` int default 1, `order` int, `is_public` bool default false, `is_sample` bool default false
+- `classes.anticheat_threshold` float default 0.85 (consumed by todo 39)
+- `contests.scoring_mode` enum cf|ioi, `teams_enabled` bool default false, `start_at`/`end_at` timestamptz
+- `runs.kind` enum practice|assignment|contest, `status` enum queued|running|done|failed, `summary_verdict` enum AC/WA/TLE/RE/CE nullable — aligned with judge `Submission` fields (verdict/points/ac_cases/steps/team_id/retry) and verdict taxonomy `{AC, WA, TLE, RE, CE}`
+- `test_results.verdict/steps/wall_ms` — per-case records
+- `forum_threads.contest_id` nullable (phase rules implied)
+- `similarity_pairs (run_a_id, run_b_id, score, scope)` — scope enum class|contest|problem
+
+## Design decisions
+- **Composite PKs replace redundant UniqueConstraints**: class_members/contest_participants/contest_problems/contest_team_members use composite PKs only. The initial autogenerate emitted both PK + named UniqueConstraint; `alembic check` flagged drift because PG's composite PK already implies uniqueness and alembic omitted the redundant constraint. Removed the redundant UniqueConstraints from models → zero drift.
+- **Bootstrap admin (M12)**: `bootstrap_admin(Session(op.get_bind()))` at the end of the initial migration's `upgrade()`. Reads `ADMIN_USERNAME`/`ADMIN_PASSWORD` env; no-op if unset or user exists (idempotent); password hashed with pwdlib argon2 (same lib todo 17 uses).
+- **alembic/env.py**: URL always from `config.database_url()` (env `DATABASE_URL` with local default) — credentials never committed in alembic.ini. Tests set `DATABASE_URL` env var to point at the test DB.
+- **Tests use postgres, not SQLite**: dedicated `pseint_test` DB on the same docker postgres, created/dropped per test session, migrated to head via alembic programmatically.
+
+## Acceptance results (fresh DB: `docker compose down -v` → `up -d postgres`)
+1. `cd web/api && ADMIN_USERNAME=admin ADMIN_PASSWORD=admin-secret-123 alembic upgrade head` → **exit 0**, `Running upgrade -> fc1fd6c4afd9, initial schema`
+2. `pytest tests/test_models.py -q` → **19 passed** (CRUD round-trips × 11 core tables + join tables, duplicate class code → IntegrityError, duplicate username → IntegrityError, orphan FK inserts → IntegrityError × 2, bootstrap admin create/idempotent/noop, models-vs-migration table match)
+3. Bootstrap admin row exists after migrate with env creds:
+   ```
+   id | username | display_name  | role
+   ----+----------+---------------+-------
+     1 | admin    | Administrator | admin
+   ```
+4. `alembic check` → **No new upgrade operations detected** (no drift between models and DB)
+5. Table list in DB (17 relations incl. alembic_version) matches models exactly
+6. `ruff check src tests alembic` → **All checks passed!**
+
+## QA scenarios
+- **Happy**: migrate on clean DB → 0 errors, 16 tables match models (verified via `\dt` + `alembic check`)
+- **Failure**: duplicate class code insert → IntegrityError asserted (test_duplicate_class_code_raises_integrity_error)
+
+## Notes
+- Bootstrap admin idempotency verified: re-running `alembic upgrade head` with env creds leaves exactly 1 user.
+- `TestCase`/`TestResult` model classes marked `__test__ = False` to silence pytest collection warnings.
+- Autogenerated alembic revisions excluded from E501/UP007/UP035/W291 via per-file-ignores (alembic boilerplate conventions).

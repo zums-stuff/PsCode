@@ -109,3 +109,31 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **effective_limits via dataclasses.replace over field-filtered keys**: `{k: v for k, v in problem.items() if k in Limits.__dataclass_fields__}` — unknown keys (step_budget, compare_mode) are ignored by construction, keeping the module pure and the override contract explicit.
 - **Frozen Limits dataclass + replace() works cleanly**: `replace(Limits(), **overrides)` is the whole override mechanism; no mutation, no defaults drift.
 - **The runner's seed plumbing needed zero changes**: `tc.get("seed", 0)` (todo 10) already implements SPEC §(h); todo 15 only centralizes the default as `DEFAULT_SEED = 0` in budgets.py and proves it with a missing-seed-key test.
+
+## Todo 28 — CodeMirror PseInt mode (2026-09-05)
+
+- **StreamLanguage tags live on node types via an internal styleTags prop**: `node.type.tags` is undefined and `node.type.prop(styleTags)` is undefined too (styleTags() returns a prop SOURCE, not the prop). The public reader is `getStyleTags(node)` from @lezer/highlight — that's the path the editor's highlighter uses. Tests must read tags via `getStyleTags(node).tags`.
+- **Legacy defaultTable shadows custom token names**: StreamLanguage's TokenTable pre-maps CodeMirror-5 legacy names — `"type"` → typeName, `"builtin"` → variableName.standard, `"variable"` → variableName, etc. Custom tokenTable entries with those names are NEVER consulted. Use non-colliding names: `pseintType`, `pseintBuiltin` (keyword/literal/operator/number/string/comment/punct are safe).
+- **`Language.highlight` does not exist** — highlightTree(tree, lang.highlight, ...) crashes with "Cannot read properties of undefined (reading 'scope')". StreamLanguage has no highlight property; tags come from the tokenTable attached to node types.
+- **jsdom's URL global breaks `new URL(rel, import.meta.url)`**: resolves against http://localhost:3000 (document location) instead of the file base → "The URL must be of scheme file" from fileURLToPath. Use `fileURLToPath(import.meta.url)` (string) + node:path join instead.
+- **EditorView in jsdom needs polyfills**: ResizeObserver, requestAnimationFrame, Element.scrollIntoView. Without them the mount test crashes; with them, CodeMirror 6 renders fine in jsdom.
+- **Custom tags need a HighlightStyle to produce DOM spans**: without `syntaxHighlighting(...)`, tokens get tags but no CSS classes → `.cm-line span` count is 0. The lang package ships `pseintHighlightStyle` wired into `pseint()` so colors work out of the box.
+- **Tag.define(name) accepts a name** — naming custom tags makes test failure messages readable (String(tag) prints the name).
+- **StringStream.peek() is typed `string | undefined`** in @codemirror/language 6.12 — capture `const ch = stream.peek() ?? ""` once at the top of token().
+
+## [2026-09-05] Todo 28: CodeMirror PseInt mode
+- StreamLanguage tags read via getStyleTags(node), NOT node.type.tags
+- Legacy defaultTable shadows "type"/"builtin" token names -> renamed pseintType/pseintBuiltin
+- jsdom URL global breaks new URL(rel, import.meta.url); EditorView needs ResizeObserver/rAF/scrollIntoView polyfills
+- Engine lexer is lexer.py (not tokenizer.py); types are parser-level _TYPE_NAMES, not lexer keywords
+- KNOWN MINOR GAP: client punct set missing ";" (engine SEMICOLON) - no corpus usage, cosmetic only
+
+## Todo 16 — PostgreSQL schema + Alembic + bootstrap admin (2026-09-05)
+
+- **Complexity enum must use superscript forms**: judge complexity.py + SPEC §(k) use `O(n²)`, `O(n³)`, `O(2ⁿ)` (unicode), NOT ASCII `O(n^2)`. The task brief said ASCII, but the judge compares these exact strings — the DB enum MUST match the judge or grading breaks. When a task brief conflicts with an authoritative consumer, the consumer wins.
+- **Composite PKs make named UniqueConstraints redundant in PG**: alembic autogenerate omits a UniqueConstraint when a composite PK covers the same columns, so `alembic check` flags drift if the model declares both. Use composite PK only for join tables.
+- **PG enum types survive table drops**: `alembic downgrade base` drops tables but NOT the `CREATE TYPE` enums. Re-running the initial migration on a "downgraded" DB fails with `DuplicateObject: type "user_role" already exists`. Drop the enum types manually (`DROP TYPE ... CASCADE`) or recreate the volume.
+- **alembic env.py URL override**: `config.set_main_option("sqlalchemy.url", ...)` in env.py is the right seam — but it must come from `config.database_url()` (env with local default), NOT the placeholder in alembic.ini. Tests point at the test DB by setting the `DATABASE_URL` env var before `command.upgrade`.
+- **psycopg.sql.Composed can't go through SQLAlchemy conn.execute()**: raises `ObjectNotExecutableError`. Use `text()` with a constant identifier (safe) or the raw psycopg connection.
+- **Test DB pattern**: session-scoped fixture creates `pseint_test` on the same docker postgres (via the `postgres` maintenance DB with AUTOCOMMIT), runs `command.upgrade(Config("alembic.ini"), "head")`, yields an engine, drops the DB with `DROP DATABASE ... WITH (FORCE)`.
+- **`__test__ = False` on model classes**: `TestCase`/`TestResult` get picked up by pytest as test classes (PytestCollectionWarning). Mark them `__test__ = False`.

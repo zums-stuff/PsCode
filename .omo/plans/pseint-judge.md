@@ -235,7 +235,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   Commit: Y | feat(judge): determinism and budgets
 
 ### Wave 3 - Persistence + auth + API (C5)
-- [ ] 16. PostgreSQL schema + Alembic migrations + bootstrap admin
+- [x] 16. PostgreSQL schema + Alembic migrations + bootstrap admin
   What to do / Must NOT do: web/api/src/pseint_api/ with models.py (SQLAlchemy 2.x): tables from Scope IN C5 (all 15); columns: problems.expected_complexity (enum), problems.step_budget (int|null), problems.compare_mode (exact|token); test_cases.seed (int default 0) + points + order + is_public (bool default false — visible to students) + is_sample (bool — exactly one per problem, drives the practice Run sample); classes.anticheat_threshold (float default 0.85, consumed by todo 39); contests.scoring_mode (cf|ioi), teams_enabled (bool default false), start_at/end_at; runs.kind (practice|assignment|contest) + status + summary_verdict; test_results.verdict/steps/wall_ms; forum_threads.contest_id nullable + phase rules implied; similarity_pairs (run_a_id, run_b_id, score, scope); alembic initial revision; bootstrap admin from env ADMIN_USERNAME/ADMIN_PASSWORD at first `alembic upgrade head` (M12). Must NOT use SQLite in prod; engine/judge packages must not import web code.
   Parallelization: Wave 3 | Blocked by: 1 | Blocks: 17,18 | Can parallelize with: 10
   References: draft M12 (schema ownership), D10 (roles), MySQL-out (D3 answer: PostgreSQL)
@@ -333,7 +333,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: student login → authed pages render; failure: student on /admin → redirect /403. Evidence .omo/evidence/task-27-pseint-judge.txt
   Commit: Y | feat(web): app shell and auth
 
-- [ ] 28. CodeMirror PseInt language mode
+- [x] 28. CodeMirror PseInt language mode
   What to do / Must NOT do: @codemirror/lang-pseint (local package in web/frontend/src/lang): stream parser marking keywords (+synonyms), types, operators, numbers, strings, comments, Verdadero/Falso; NO AST/parse logic client-side (M11) — textmate-style tokenizer only.
   Parallelization: Wave 5 | Blocked by: - | Blocks: 29 | Can parallelize with: 27
   References: draft M11; CodeMirror 6 language authoring guide

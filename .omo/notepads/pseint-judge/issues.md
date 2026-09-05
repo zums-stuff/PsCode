@@ -62,3 +62,22 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 ## Todo 15 — determinism + budgets (2026-09-05)
 
 - **No issues found**: all 15 determinism/budget tests passed on first green run after the red phase (red = missing budgets module, as expected); ruff clean. The runner's seed plumbing (todo 10) was already correct — verified, not modified. Corpus .out files matched judge-path output byte-for-byte on the first check.
+
+## [2026-09-05] BLOCKER: Docker daemon down (Wave 3 gate)
+- Todo 16 acceptance requires `docker compose up -d postgres`; daemon inactive (`systemctl is-active docker` → inactive), sudo password required, no /var/run/docker.sock.
+- Podman available but plan acceptance is docker-compose-specific — do NOT silently swap environments.
+- Entire Wave 3 (16-21) + downstream waves blocked on this. User must run `sudo systemctl start docker`.
+- Todo 16 marked `- [~]` in plan. Resume: verify `docker info` shows ServerVersion, then dispatch Todo 16.
+
+## Todo 28 — CodeMirror PseInt mode (2026-09-05)
+
+- **No issues found in the dialect mapping**: the engine lexer (lexer.py, not tokenizer.py — the plan's path was stale) was unambiguous; the client tokenizer mirrors it 1:1. All 11 tests passed after the API-discovery fixes below.
+- **CodeMirror API discoveries cost 4 red runs** (all test-side, zero product-code bugs): (1) `Language.highlight` doesn't exist → highlightTree crash; (2) tags read via `getStyleTags(node)`, not `node.type.tags`/`styleTags` prop; (3) legacy defaultTable shadows "type"/"builtin" token names → renamed to pseintType/pseintBuiltin; (4) jsdom URL global breaks `new URL(rel, import.meta.url)` → use fileURLToPath string. All documented in learnings.
+- **Fixture gap**: the first fixture draft had "falso" only inside a string literal, so the bare `Falso` literal assertion failed — added `flag <- Falso`. Lesson: when asserting literal coverage, check the fixture contains the bare token, not just the substring.
+
+## Todo 16 — PostgreSQL schema + Alembic + bootstrap admin (2026-09-05)
+
+- **Task brief vs judge/SPEC enum mismatch**: brief said `O(n^2), O(n^3), O(2^n)` (ASCII); judge complexity.py + SPEC §(k) use `O(n²), O(n³), O(2ⁿ)` (superscript). Resolved in favor of judge/SPEC — the DB stores values the judge compares verbatim. Recorded in evidence.
+- **alembic check drift on composite-PK join tables**: autogenerate emitted PK + redundant named UniqueConstraint; PG composite PK already implies uniqueness so alembic omitted the constraint → drift. Fixed by removing redundant UniqueConstraints from models.
+- **PG enum types persist after downgrade**: `alembic downgrade base` + re-upgrade failed with `DuplicateObject: type "user_role" already exists`. Fixed by `DROP TYPE ... CASCADE` before re-running (or `docker compose down -v` for a truly fresh DB).
+- **alembic check failed with placeholder URL**: env.py only overrode the URL when DATABASE_URL was set, so `alembic check` without the env var used the `driver://user:pass@localhost/dbname` placeholder → `NoSuchModuleError`. Fixed: env.py always uses `config.database_url()`.
