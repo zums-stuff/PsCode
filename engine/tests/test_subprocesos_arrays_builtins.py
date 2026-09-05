@@ -432,3 +432,132 @@ def test_builtin_call_costs_one_step():
 def test_unknown_function_is_err_type():
     err = run_err(prog("    Escribir inexistente(1)\n"))
     assert err.code == "ERR_TYPE"
+
+
+# ---------------------------------------------------------------------------
+# Edge-case guards (fix commit) — no Python exception may ever leak
+# ---------------------------------------------------------------------------
+
+
+def test_azar_zero_is_err_type():
+    err = run_err(prog("    Escribir AZAR(0)\n"))
+    assert err.code == "ERR_TYPE"
+
+
+def test_azar_negative_is_err_type():
+    err = run_err(prog("    Escribir AZAR(-5)\n"))
+    assert err.code == "ERR_TYPE"
+
+
+def test_ln_zero_is_err_type():
+    err = run_err(prog("    Escribir LN(0)\n"))
+    assert err.code == "ERR_TYPE"
+
+
+def test_ln_negative_is_err_type():
+    err = run_err(prog("    Escribir LN(-1)\n"))
+    assert err.code == "ERR_TYPE"
+
+
+def test_exp_overflow_is_err_type():
+    err = run_err(prog("    Escribir EXP(1000)\n"))
+    assert err.code == "ERR_TYPE"
+
+
+def test_redimensionar_legal_resize_near_cap():
+    # 3.5M total, resize a to 800K -> net 3.8M (legal, under 4M).
+    result = run_ok(
+        prog(
+            "    Dimension a[500000]\n"
+            "    Dimension b[1000000]\n"
+            "    Dimension c[1000000]\n"
+            "    Dimension d[1000000]\n"
+            "    Redimensionar a[800000]\n"
+            "    Escribir \"ok\"\n"
+        )
+    )
+    assert result.output == "ok\n"
+
+
+def test_redimensionar_exceeding_net_cap_is_err_dim():
+    # 3.9M total, resize a to 300K -> net 4.1M (over 4M) -> ERR_DIM.
+    err = run_err(
+        prog(
+            "    Dimension a[100000]\n"
+            "    Dimension b[1000000]\n"
+            "    Dimension c[1000000]\n"
+            "    Dimension d[1000000]\n"
+            "    Dimension e[800000]\n"
+            "    Redimensionar a[300000]\n"
+        )
+    )
+    assert err.code == "ERR_DIM"
+
+
+def test_redimensionar_exceeding_per_array_cap_is_err_dim():
+    # Resize a 1M array to 2M -> per-array cap (1M) -> ERR_DIM.
+    err = run_err(
+        prog(
+            "    Dimension a[1000000]\n"
+            "    Redimensionar a[2000000]\n"
+        )
+    )
+    assert err.code == "ERR_DIM"
+
+
+def test_array_literal_over_total_cap_is_err_dim():
+    # 4 arrays of 1M already consume the 4M per-run total; any literal pushes over.
+    err = run_err(
+        prog(
+            "    Dimension a[1000000]\n"
+            "    Dimension b[1000000]\n"
+            "    Dimension c[1000000]\n"
+            "    Dimension d[1000000]\n"
+            "    e <- [1]\n"
+        )
+    )
+    assert err.code == "ERR_DIM"
+
+
+def test_subproceso_extra_arg_is_err_type():
+    err = run_err(
+        prog(
+            "    SubProceso inc(a)\n"
+            "        a <- a + 1\n"
+            "    FinSubProceso\n"
+            "    x <- 5\n"
+            "    inc(x, 99)\n"
+        )
+    )
+    assert err.code == "ERR_TYPE"
+    assert "argumentos" in err.message
+
+
+def test_subproceso_missing_arg_is_err_type():
+    err = run_err(
+        prog(
+            "    SubProceso inc(a)\n"
+            "        a <- a + 1\n"
+            "    FinSubProceso\n"
+            "    inc()\n"
+        )
+    )
+    assert err.code == "ERR_TYPE"
+    assert "argumentos" in err.message
+
+
+def test_funcion_extra_arg_is_err_type():
+    err = run_err(
+        prog(
+            "    Funcion cuadrado(n): Entero\n"
+            "        Retornar n * n\n"
+            "    FinFuncion\n"
+            "    Escribir cuadrado(7, 8)\n"
+        )
+    )
+    assert err.code == "ERR_TYPE"
+
+
+def test_negative_base_fractional_exponent_is_err_type():
+    err = run_err(prog("    Escribir (-8) ^ 0.5\n"))
+    assert err.code == "ERR_TYPE"

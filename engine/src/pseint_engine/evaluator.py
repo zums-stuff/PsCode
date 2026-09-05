@@ -464,6 +464,13 @@ class Evaluator:
         The callee's statements count toward the caller's step total via the
         shared ``_steps`` counter; recursion is capped by ``_enter_frame``.
         """
+        if len(args) != len(sub.params):
+            raise self._err(
+                "ERR_TYPE",
+                f"la llamada a {sub.name.name} esperaba {len(sub.params)} "
+                f"argumentos, recibió {len(args)}",
+                node,
+            )
         self._enter_frame(node)
         self._env.push_scope()
         prev_in_function = self._in_function
@@ -528,16 +535,10 @@ class Evaluator:
             raise self._err("ERR_DIM", f"{name} no es un arreglo", stmt)
         arr = self._env.get(name)
         sizes = self._eval_sizes(stmt.sizes, stmt)
-        new_total = self._check_array_caps(sizes, stmt)
         old_total = arr.total()
-        if self._total_array_elements - old_total + new_total > (
-            _MAX_TOTAL_ARRAY_ELEMENTS
-        ):
-            raise self._err(
-                "ERR_DIM",
-                "total de elementos de arreglos excede el límite",
-                stmt,
-            )
+        new_total = self._check_array_caps(
+            sizes, stmt, exclude_current_total=old_total
+        )
         old_data = arr.data
         arr.sizes = sizes
         arr.data = [None] * new_total
@@ -561,7 +562,9 @@ class Evaluator:
         self._total_array_elements += total
         return Array(sizes)
 
-    def _check_array_caps(self, sizes: list[int], node: object) -> int:
+    def _check_array_caps(
+        self, sizes: list[int], node: object, exclude_current_total: int = 0
+    ) -> int:
         if len(sizes) > _MAX_DIMS:
             raise self._err(
                 "ERR_DIM", f"máximo {_MAX_DIMS} dimensiones", node
@@ -575,7 +578,10 @@ class Evaluator:
                 f"arreglo excede {_MAX_ARRAY_ELEMENTS} elementos",
                 node,
             )
-        if self._total_array_elements + total > _MAX_TOTAL_ARRAY_ELEMENTS:
+        if (
+            self._total_array_elements - exclude_current_total + total
+            > _MAX_TOTAL_ARRAY_ELEMENTS
+        ):
             raise self._err(
                 "ERR_DIM",
                 "total de elementos de arreglos excede el límite",
@@ -604,11 +610,12 @@ class Evaluator:
         return elem
 
     def _eval_array_literal(self, expr: ArrayLiteral) -> Value:
+        total = self._check_array_caps([len(expr.elements)], expr)
         elements = [self._eval_expr(e) for e in expr.elements]
         arr = Array([len(elements)])
         for i, v in enumerate(elements):
             arr.data[i] = v
-        self._total_array_elements += len(elements)
+        self._total_array_elements += total
         return Value(arr, ARREGLO)
 
     def _resolve_array(self, array_expr: object, node: object) -> Array:
@@ -668,6 +675,10 @@ class Evaluator:
 
     def _builtin_azar(self, expr: FunctionCall) -> Value:
         n = self._builtin_int_arg(expr, 0)
+        if n <= 0:
+            raise self._err(
+                "ERR_TYPE", "AZAR requiere un límite positivo", expr
+            )
         return Value(self._rng.randrange(n), ENTERO)
 
     def _builtin_rc(self, expr: FunctionCall) -> Value:
@@ -680,11 +691,20 @@ class Evaluator:
 
     def _builtin_ln(self, expr: FunctionCall) -> Value:
         v = self._builtin_num_arg(expr, 0)
+        if v.value <= 0:
+            raise self._err(
+                "ERR_TYPE", "LN requiere un argumento positivo", expr
+            )
         return Value(math.log(v.value), REAL)
 
     def _builtin_exp(self, expr: FunctionCall) -> Value:
         v = self._builtin_num_arg(expr, 0)
-        return Value(math.exp(v.value), REAL)
+        try:
+            return Value(math.exp(v.value), REAL)
+        except OverflowError:
+            raise self._err(
+                "ERR_TYPE", "EXP excede el rango numérico", expr
+            ) from None
 
     def _builtin_sen(self, expr: FunctionCall) -> Value:
         v = self._builtin_num_arg(expr, 0)
@@ -911,7 +931,18 @@ class Evaluator:
                 raise self._err("ERR_DIV0", "módulo por cero", expr)
             return Value(li % ri, ENTERO)
         if op == "^":
-            result = lv**rv
+            try:
+                result = lv**rv
+            except OverflowError:
+                raise self._err(
+                    "ERR_TYPE", "potencia excede el rango numérico", expr
+                ) from None
+            if isinstance(result, complex):
+                raise self._err(
+                    "ERR_TYPE",
+                    "potencia con base negativa y exponente fraccionario",
+                    expr,
+                )
             if left.type == ENTERO and right.type == ENTERO and rv >= 0:
                 return Value(result, ENTERO)
             return Value(result, REAL)
