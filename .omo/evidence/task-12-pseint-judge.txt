@@ -1,0 +1,89 @@
+# Evidence — Todo 12: Implement verdict classification
+
+**Date:** 2026-09-05
+**Plan ref:** `.omo/plans/pseint-judge.md` lines 205-211
+**Spec ref:** `spec/SPEC.md` §(i) Runtime-Error Taxonomy (NORMATIVE, 8 RE codes)
+**Draft ref:** `.omo/drafts/pseint-judge.md` M1 (CE short-circuit), M2 (lazy rules), D1 (verdict taxonomy), DOMjudge wall-vs-cpu practice (Findings)
+
+## Deliverables
+
+- `judge/src/pseint_judge/verdicts.py` — `classify_case(...)`, `VerdictRecord`, `VERDICTS`
+- `judge/tests/test_verdicts.py` — 13-case TDD suite
+
+## Taxonomy (EXACTLY {AC, WA, TLE, RE, CE} — nothing else, plan §12 MUST NOT)
+
+| Verdict | Meaning | Trigger |
+|---------|---------|---------|
+| AC | Accepted | correct output, no error, within both budgets |
+| WA | Wrong Answer | output comparison mismatch (compare_outputs) |
+| TLE(step) | Time Limit (step budget) | engine error `ERR_STEP_LIMIT` |
+| TLE(wall) | Time Limit (wall clock) | worker-side `wall_ms > wall_limit_ms` |
+| RE(code) | Runtime Error | any other engine error, carrying its SPEC §(i) code |
+| CE | Compile/Parse Error | runner parse-once short-circuit (M1), passed through |
+
+## Priority table (documented in module docstring, highest wins)
+
+1. **CE** — parse failure; passthrough from the runner (M1 short-circuit).
+2. **TLE(step)** — engine `ERR_STEP_LIMIT`. Beats comparison: a program that
+   hits the step budget is TLE even if its partial output matches expected.
+3. **TLE(wall)** — worker-side wall clock over the limit. Beats RE: a run that
+   overran the wall clock is TLE even if it also raised a runtime error
+   (DOMjudge wall-vs-cpu practice: wall cap is a hard safety bound).
+4. **RE(code)** — any other engine runtime error (ERR_DIV0, ERR_TYPE,
+   ERR_BOUNDS, ERR_DIM, ERR_RECURSION, ERR_EOF_INPUT, ERR_OUTPUT_CAP). Beats
+   WA: an errored run is RE even if its partial output differs from expected.
+5. **WA** — comparison mismatch.
+6. **AC** — correct output, no error, within budgets.
+
+## Module design
+
+- `classify_case(case: CaseResult, expected: str, compare_mode: str = "exact", wall_limit_ms: int | None = None) -> VerdictRecord`
+  - Consumes the runner `CaseResult` directly (error dict, output, steps, wall_ms) — clean signature for todo 14 (scoring) to consume.
+  - `wall_limit_ms=None` disables the wall check (todo 15 wiring supplies the problem's limit; no defaults hardcoded here).
+  - Wall TLE fires on strictly-greater `wall_ms > wall_limit_ms`, matching the engine's strictly-greater step-budget convention (todo 8 learning).
+  - Classification derives from the error dict (ground truth), not the provisional verdict string.
+- `VerdictRecord` (frozen dataclass): `{verdict, steps, error_code: str | None, wall_ms: int | None}` — `error_code` set for RE (engine code), TLE(step) (`ERR_STEP_LIMIT`) and CE; `wall_ms` set for TLE(wall).
+- `VERDICTS = frozenset({"AC", "WA", "TLE", "RE", "CE"})` — the closed taxonomy contract.
+
+## Test coverage (13 cases)
+
+Taxonomy rows:
+1. correct output + no error → AC with steps (42)
+2. wrong output + no error → WA
+3. ERR_STEP_LIMIT → TLE(step) even when partial output matches expected
+4. wall_ms 6000 > limit 5000 → TLE(wall) even when output correct
+5. ERR_DIV0 + wrong output → RE (priority, not WA) with code ERR_DIV0
+6. ERR_TYPE → RE with code ERR_TYPE
+7. CE passthrough from runner (verdict="CE", error code "CE")
+
+Priority conflicts:
+8. step-limit beats comparison (matching output still TLE, not AC)
+9. RE beats WA (ERR_DIV0 + wrong output → RE, not WA)
+10. wall TLE beats RE (wall over limit + ERR_DIV0 → TLE with wall_ms)
+11. step TLE beats wall TLE (both exceeded → TLE with error_code ERR_STEP_LIMIT)
+
+Taxonomy closed:
+12. `VERDICTS == {"AC", "WA", "TLE", "RE", "CE"}` — no verdicts outside the taxonomy
+13. `wall_limit_ms=None` disables the wall check (6000ms wall, no limit → AC)
+
+## QA scenarios (plan §12, both asserted)
+
+- happy: correct output → AC with steps → test 1.
+- failure: engine ERR_DIV0 + wrong output → RE (priority) not WA → tests 5, 9.
+
+## Verification results
+
+```
+$ ../.venv/bin/python -m pytest tests/test_verdicts.py -q
+13 passed in 0.27s
+
+$ ../.venv/bin/python -m pytest tests/ -q          # full judge suite (regression)
+33 passed in 1.99s
+
+$ ../.venv/bin/ruff check src
+All checks passed!
+```
+
+## Commit
+
+`feat(judge): verdict classification` — hash: `7374564`

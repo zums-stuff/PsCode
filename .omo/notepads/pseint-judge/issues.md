@@ -45,3 +45,7 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 ## Todo 11 — output comparison (2026-09-05)
 
 - **No issues found**: all 10 comparison tests passed on first green run; ruff clean. The SPEC §(j) contract was unambiguous enough that no interpretation questions arose (M5 already pinned the trailing-newline rule).
+
+## Todo 12 — verdict classification (2026-09-05)
+
+- **No issues found**: all 13 verdict tests passed on first green run after the red phase; ruff clean. The SPEC §(i) taxonomy + draft M1/M2 + DOMjudge wall-vs-cpu practice were unambiguous; no interpretation questions arose.

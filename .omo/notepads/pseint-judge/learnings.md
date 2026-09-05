@@ -76,3 +76,11 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **Missing-side convention**: when one side is longer, the missing side reports `""` for expected_line/got_line (not None) — keeps the return dict JSON-serializable for the API layer (todo 12+).
 - **Token mode is whole-text `split()`, not per-line**: `"1  2\n3\n".split()` → `["1","2","3"]` equals `"1 2 3\n".split()` — newlines are just whitespace. Per-line token splitting would fail this pinned case.
 - **first_diff_line doubles as token index in token mode**: same field name, 1-based index into the token sequence (plan says "first_diff_token" but the dict key stays `first_diff_line` per the todo-11 contract).
+
+## Todo 12 — verdict classification (2026-09-05)
+
+- **Classifier derives from the error dict, not the provisional verdict string**: `classify_case` reads `case.error["code"]` (ground truth) rather than trusting `case.verdict` (OK/TLE/RE provisional). The runner's provisional mapping is a subset; the classifier owns the full taxonomy.
+- **Wall TLE uses strictly-greater `wall_ms > wall_limit_ms`**, mirroring the engine's strictly-greater step-budget convention (todo 8) — consistent boundary semantics across both budget kinds.
+- **`wall_limit_ms=None` disables the wall check**: the classifier hardcodes no defaults (todo 15 constants module owns 5s/3s/128MB); the caller passes the problem's limit. Keeps the module pure and testable.
+- **Priority edges tested pairwise**: the 6-level table has 5 adjacent edges; tests cover all of them (CE passthrough, step>wall, wall>RE, RE>WA, step>comparison) plus the closed-taxonomy constant `VERDICTS`.
+- **CE passthrough is defensive**: the runner short-circuits CE at submission level (no CaseResult ever has verdict CE from the runner), but the classifier handles it so the taxonomy is complete in one module and todo 14 has a uniform consumption point.
