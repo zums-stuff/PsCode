@@ -50,3 +50,12 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **ERR_STEP_LIMIT fires on strictly-greater**: `_check_step_budget` raises when `steps > budget`, so a budget of 5 fires at step 6 (during the BinaryOp eval of `i <- i + 1`, not at the statement boundary).
 - **Corpus harness pattern**: pytest parametrize over sorted case names + a separate coverage-count test that prints per-category counts and asserts minimums (>=25 total, >=5 negative). Per-case kwargs dict for negative cases needing step_budget/output_cap.
 - **Byte-exactness QA is cheap**: one `printf 'mayor \n' > si_basico.out` + pytest run proves the harness catches trailing-space mutations with a visible diff.
+
+## Todo 9 — hardening + property tests (2026-09-05)
+
+- **No engine bugs found**: 200+200 hypothesis property examples across bounded-depth expressions and array access, plus the full edge matrix, all passed against the existing evaluator with zero crashes. The todo-6 crash guards (AZAR(0), LN(0), EXP overflow, complex power, arity, Redimensionar caps) hold across the generated space.
+- **Hypothesis strategy shape**: build the program as `Proceso P / Escribir <expr> / FinProceso`, parse (skip CE via LexError/ParseError), then evaluate. The no-crash invariant is `result.error is None or result.error.code in {8 SPEC codes}`.
+- **SUBCADENA out-of-range is safe**: negative and >len indices slice cleanly (Python slicing semantics) — no crash, no RE. This is the documented behavior.
+- **Negative MOD**: Python `%` semantics (sign follows divisor) — `-7 MOD 3` = 2, `7 MOD -3` = -2, `-7 MOD -3` = -1. Matches SPEC section (c) (MOD truncates reals first, then Python `%`).
+- **Output cap fires after append**: ERR_OUTPUT_CAP raises after the offending Escribir completes, so partial output is present. Confirmed in the edge matrix.
+- **Step budget fires on strictly-greater**: `_check_step_budget` raises when `steps > budget`. Infinite Mientras with budget=1000 terminates by design.

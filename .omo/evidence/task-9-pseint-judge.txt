@@ -1,0 +1,79 @@
+TASK 9 — Harden the engine (property + edge tests)
+==================================================
+Date: 2026-09-05
+Plan: .omo/plans/pseint-judge.md (todo 9, lines 180-186)
+Status: COMPLETE
+
+FILES
+-----
+- engine/tests/test_hardening.py (new)
+
+THE NO-CRASH INVARIANT (under test)
+-----------------------------------
+evaluate() must NEVER leak a Python exception. Every input yields either a
+clean EvalResult or a RuntimeError with one of the 8 SPEC section (i) codes:
+  ERR_DIV0, ERR_TYPE, ERR_BOUNDS, ERR_DIM, ERR_RECURSION,
+  ERR_EOF_INPUT, ERR_STEP_LIMIT, ERR_OUTPUT_CAP.
+A Python exception (ValueError, OverflowError, TypeError, IndexError,
+ZeroDivisionError, RecursionError, etc.) FAILS the suite.
+
+PROPERTY-TEST STRATEGY DESCRIPTION
+----------------------------------
+Hypothesis strategies generate bounded-depth (depth <= 4) PseInt expressions
+from:
+  - literals: integer (-100..100), real (non-integer, |x|>0.001, -100..100),
+    boolean (Verdadero/Falso), string (alnum+space, len 1..20)
+  - unary ops: +, -, ~
+  - binary ops: + - * / % MOD ^ < > = == <> <= >= & |
+  - built-in calls: ABS TRUNC REDON LN EXP SEN COS ATAN LARGO
+    MAYUSCULARES MINUSCULAS SUBCADENA CONCATENAR AZAR RC
+  - array indexing on a Dimension'd array (size 3..10, index -2..size+1)
+Programs are built as `Proceso P / Escribir <expr> / FinProceso`, parsed
+(CE cases skipped — LexError/ParseError are not evaluator crashes), then
+evaluated. The no-crash invariant is asserted on every generated example.
+
+Example counts (hypothesis, max_examples=200 each):
+  - test_property_no_crash_expressions: 200 examples (stopped at max_examples)
+  - test_property_no_crash_array_access: 200 examples (stopped at max_examples)
+Typical runtimes: expressions ~98-150ms/example; array access ~2-4ms/example.
+Hypothesis default deadline (200ms) passed — no deadline failures.
+
+EDGE-CASE MATRIX RESULTS (all pass)
+-----------------------------------
+1. Negative Mod: -7 MOD 3 -> 2; 7 MOD -3 -> -2; -7 MOD -3 -> -1 (no crash)
+2. Int/float division: 7 / 2 -> Real 3.5; 7 / 0 -> ERR_DIV0; 0 / 0 -> ERR_DIV0;
+   7 MOD 0 -> ERR_DIV0
+3. Huge string ops: LARGO on 100KB string -> 100000; SUBCADENA out-of-range
+   low/high/negative indices -> no crash; CONCATENAR of 2x50KB -> 100KB;
+   MAYUSCULARES on 100KB -> no crash
+4. Deep recursion: infinite recursion -> ERR_RECURSION (cap 1000 fires, no
+   Python RecursionError — sys.setrecursionlimit(20000) holds);
+   factorial(10) within cap -> 3628800 clean
+5. Array bounds sweep (size 5): idx -2,-1 -> ERR_BOUNDS; 0,4 -> OK;
+   5,6 -> ERR_BOUNDS
+6. Leer EOF: `Leer x` with empty input -> ERR_EOF_INPUT
+7. Output cap: Para loop writing 11 bytes x 20 with output_cap=100 ->
+   ERR_OUTPUT_CAP fires (10 iterations = 110 bytes > 100); partial output
+   present (cap fires after append, per SPEC section (i))
+8. Step budget: infinite Mientras Verdadero loop with step_budget=1000 ->
+   ERR_STEP_LIMIT fires (loop never terminates without it); bounded program
+   within budget -> clean
+
+No hangs: every infinite-loop test passes a step_budget so it terminates by
+design. No engine modifications were required — no property test found a real
+crash.
+
+VERIFICATION COMMANDS (all green)
+---------------------------------
+$ cd engine && ../.venv/bin/python -m pytest tests/test_hardening.py -q
+  27 passed in 28.81s   (hypothesis default deadline passes)
+
+$ cd engine && ../.venv/bin/python -m pytest tests/ -q
+  540 passed in 40.19s  (513 existing + 27 hardening)
+
+$ cd engine && ../.venv/bin/ruff check src
+  All checks passed!
+
+COMMIT
+------
+test(engine): hardening and property tests
