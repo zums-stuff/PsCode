@@ -1,0 +1,89 @@
+TASK 6 EVIDENCE — SubProceso/Funcion, arrays, built-ins
+=======================================================
+Date: 2026-09-05
+Plan: .omo/plans/pseint-judge.md (lines 156-162)
+Files:
+  - engine/src/pseint_engine/runtime.py   (extended: ARREGLO type, Array class,
+                                           Env reference support)
+  - engine/src/pseint_engine/evaluator.py (extended: subprocesos, arrays,
+                                           built-ins)
+  - engine/tests/test_subprocesos_arrays_builtins.py (new, 44 tests)
+
+TEST RESULTS
+------------
+  pytest tests/test_subprocesos_arrays_builtins.py -q  ->  44 passed
+  pytest tests/ (full suite)                            ->  435 passed
+  ruff check src                                        ->  All checks passed
+  ruff check tests/test_subprocesos_arrays_builtins.py  ->  All checks passed
+
+SUBPROCESO/FUNCION COVERAGE
+---------------------------
+  Call with parens / without parens
+  Por Valor (default for simple types): callee mutation NOT visible at caller
+  Por Referencia: callee mutation visible at caller (same + different param name)
+  Multiple params, mixed directions (swap)
+  Funcion returns via Retornar expr; return_type conversion (Real)
+  Recursion: factorial(10) == 3628800, steps = 71 (recorded)
+  Recursion depth cap: infinite recursion -> ERR_RECURSION (SPEC §(i), 1000 frames)
+  Callee steps count toward caller total (SPEC §(g))
+  Retornar outside a function -> ERR_TYPE
+  Undefined subproceso call -> ERR_TYPE
+
+PARAM-DIRECTION SEMANTICS (official PseInt rules)
+-------------------------------------------------
+  Simple types default Por Valor; arrays default Por Referencia.
+  Por Referencia binds the caller's variable via Env.bind_reference (alias),
+  so reads/writes resolve outward to the caller's scope.
+
+ARRAY COVERAGE
+--------------
+  Dimension + indexing (read/write), multi-dim m[2,3]
+  Array index in expressions (a[0] + a[1])
+  Bounds: a[3] on size-3 -> ERR_BOUNDS; negative index -> ERR_BOUNDS
+  Undeclared array -> ERR_DIM
+  Caps: 4 dims -> ERR_DIM; 1_000_000 elements -> ERR_DIM;
+        5x1_000_000 total -> ERR_DIM (per-run 4_000_000 cap)
+  Redimensionar resizes (preserves overlapping elements); on non-array -> ERR_DIM
+  Array-by-reference mutation visible at caller (llenar(arr) -> arr[0]=42)
+  Array literal [1,2,3]
+  Uninitialized element read -> ERR_TYPE (strict, consistent with variables)
+
+BUILT-INS (SPEC §(b)) — EXACT SET, NO ADDITIONS
+-----------------------------------------------
+  AZAR(n): random.Random(seed) per run, default 0; AZAR(100) seed-0 pinned:
+           49 97 53 5 33 65 62 51 38 61 (first 10; test pins first 5)
+  RC(n):   deterministic lowercase letter from fixed alphabet; seed-0 first 4:
+           m y n b
+  ABS, LN, EXP, SEN, COS, ATAN, TRUNC, REDON, LARGO, SUBCADENA (1-indexed
+  inclusive), CONCATENAR, MAYUSCULARES, MINUSCULAS
+  FechaActual() -> "2026-01-01", HoraActual() -> "12:00:00" (SPEC §(h) stubs)
+  Built-in call = 1 step (SPEC §(g)); array indexing = 1 step (operator model)
+
+STEP-COUNT NOTES
+----------------
+  SubProceso/Funcion declaration statement = 1 step (consistent with the
+  todo-5 model where every block statement costs 1 step).
+  factorial(10) = 71 steps total (declaration + call + body + recursion).
+  ABS(5) in Escribir = 3 steps (stmt + arg + call).
+
+DESIGN DECISIONS
+----------------
+  - Arrays stored as mutable Array objects in Env (type "arreglo"); by-ref
+    params alias the caller's name via Env refs, so mutation is visible.
+  - Redimensionar mutates the Array object in place (by-ref arrays stay
+    consistent across scopes).
+  - sys.setrecursionlimit(20000): each PseInt frame costs ~6 Python frames,
+    so Python's default 1000 limit would fire before the SPEC 1000-frame cap.
+  - _ReturnSignal (noqa N818) is control flow, not an error: it unwinds
+    nested blocks when Retornar fires inside a Funcion.
+  - SUBCADENA is 1-indexed inclusive (official PseInt semantics).
+  - REDON rounds half away from zero (floor(x+0.5) / ceil(x-0.5)).
+
+QA SCENARIOS
+------------
+  happy: recursive factorial(10) == 3628800, 71 steps recorded (above)
+  failure: Dimension a[10000000] -> ERR_DIM (test_dimension_too_many_elements)
+  failure: infinite recursion -> ERR_RECURSION (test_recursion_depth_cap)
+
+Commit: a170315 — feat(engine): subprocesos, arrays, built-ins
+        d3bfbd0 — chore(evidence): add task-6 receipt
