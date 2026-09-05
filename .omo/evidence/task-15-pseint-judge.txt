@@ -1,0 +1,58 @@
+# Task 15 — Wire determinism + budgets end-to-end — Evidence
+
+**Date:** 2026-09-05
+**Plan todo:** 15 (plan lines 229-235)
+**Commit:** feat(judge): determinism and budgets — `7dee39e`
+
+## Files
+- `judge/src/pseint_judge/budgets.py` — budget/source/input constants module (pure constants, nothing randomized, no clock consulted)
+- `judge/tests/test_determinism.py` — 15 tests: rejudge stability (5 corpus programs × 2 runs), FechaActual stub, AZAR seed plumbing, effective_limits, practice quota
+
+## Constants table (budgets.py — defaults, per-problem overridable)
+| Constant | Value | Meaning |
+|---|---|---|
+| `MAX_SOURCE_BYTES` | 65 536 | 64 KB submission source cap |
+| `MAX_INPUT_BYTES` | 65 536 | 64 KB per-test-case input cap |
+| `MAX_OUTPUT_BYTES` | 1 048 576 | 1 MB engine output cap (M13) |
+| `WALL_LIMIT_MS` | 5 000 | 5 s worker-side wall-clock cap |
+| `CPU_LIMIT_MS` | 3 000 | 3 s CPU time cap |
+| `MEM_LIMIT_MB` | 128 | 128 MB memory cap |
+| `PRACTICE_RUNS_PER_MIN` | 10 | practice-mode quota, runs/min/user (M13) |
+| `DEFAULT_SEED` | 0 | AZAR/RC per-run seed default (SPEC §(h)) |
+
+- `effective_limits(problem: dict | None = None) -> Limits` returns a frozen `Limits` dataclass: pure defaults for `None`/`{}`, per-problem overrides win when a key matches a `Limits` field, non-`Limits` keys (e.g. `step_budget`) ignored. Documented as the constants the worker (todo 34) and API (todo 18) consume; runner's `_DEFAULT_OUTPUT_CAP` (1 MB) matches `MAX_OUTPUT_BYTES`.
+
+## Seed plumbing confirmation (verified, no runner change needed)
+- `runner.py` `judge_submission` already passes `tc.get("seed", 0)` → `--seed` per test case (todo 10 wiring); practice mode uses `problem.get("seed", 0)`. Contest/assignment runs therefore default to `DEFAULT_SEED = 0`. `budgets.py` centralizes/documents the default; runner behavior untouched.
+- Test `test_missing_seed_defaults_to_zero`: a test case WITHOUT a seed key produces byte-identical output to `seed=0` (`49\n` for `AZAR(100)`).
+
+## Rejudge stability proof (5 corpus programs × 2 runs, byte-identical)
+`judge_submission` run twice with identical source/input/seed; fingerprint = (verdict, error, per-case (verdict, steps, output, error)) — wall_ms/cpu_ms excluded as legitimately variable wall-clock measurements.
+
+| Program | Feature covered | Output (byte-identical both runs) | Steps | Verdict |
+|---|---|---|---|---|
+| `azar_pinned` | AZAR(100) seed-0 pinned sequence | `49\n97\n53\n5\n33\n` | 15 | OK → AC |
+| `rc_fecha_hora` | RC(1) + FechaActual/HoraActual stubs | `m\n2026-01-01\n12:00:00\n` | 9 | OK → AC |
+| `si_basico` | Si/Entonces control flow | `mayor\n` | 6 | OK → AC |
+| `factorial_5` | recursion (Funcion) | `120\n` | 36 | OK → AC |
+| `esperar_limpiar` | Esperar/Limpiar Pantalla no-ops | `done\n` | 4 | OK → AC |
+
+Each run's output is byte-identical to the golden corpus `.out`; steps match the corpus `.json`; `classify_case` yields AC (full taxonomy).
+
+## FechaActual stub proof
+`rc_fecha_hora` renders the fixed stub: output contains `2026-01-01` and `12:00:00` (SPEC §(h) fixed ISO values, no system clock consulted).
+
+## AZAR determinism proof
+- Same seed (0) twice → identical output `49\n` (single `AZAR(100)`).
+- Different seeds → different output: seed 0 → `49\n`, seed 1 → `17\n`.
+
+## Acceptance verification
+- `cd judge && python -m pytest tests/test_determinism.py -q` → **15 passed in 1.77s**
+- Full judge suite: `cd judge && python -m pytest tests/ -q` → **90 passed** (no regressions)
+- `cd judge && ruff check src` → **All checks passed!** (also clean on tests/test_determinism.py)
+
+## Design notes
+- `Limits` is a frozen dataclass; `effective_limits` uses `dataclasses.replace` over only the `Limits` fields present in the problem dict — unknown keys are ignored by construction.
+- No randomization anywhere: no time-based seeds, no random defaults; the module is pure constants (SPEC §(h) determinism).
+- No SSE fallback added (plan MUST NOT).
+- Engine files untouched; corpus programs read verbatim from `engine/tests/corpus/` (no new corpus cases — TDD-lock domain).

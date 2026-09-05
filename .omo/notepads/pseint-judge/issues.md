@@ -58,3 +58,7 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 
 - **Assignment best detail placement**: initially put best_ac_cases/best_steps/best_submission_id on the row; tests expected them per-problem. Resolved by keeping them on `ProblemResult` (assignment is per-problem) and accessing via `row.problems[pid]` — the row only carries the aggregate `total_ac_cases`.
 - **Test-file ruff violations**: the new test file initially had an unsorted import block (scoreboard vs scoring) and a >88-col line; fixed both so `ruff check src tests/test_scoring.py` is clean (repo convention keeps tests linted too, even though tests aren't strictly gated).
+
+## Todo 15 — determinism + budgets (2026-09-05)
+
+- **No issues found**: all 15 determinism/budget tests passed on first green run after the red phase (red = missing budgets module, as expected); ruff clean. The runner's seed plumbing (todo 10) was already correct — verified, not modified. Corpus .out files matched judge-path output byte-for-byte on the first check.

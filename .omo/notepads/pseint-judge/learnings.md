@@ -101,3 +101,11 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **Teams = roster-driven participant set**: when a `roster` is passed, participants are the roster's teams and only locked-roster members' submissions count. This enforces the roster-lock edge (no mid-contest edits) by construction.
 - **Assignment best is per-problem**: the best submission detail (best_ac_cases/best_steps/best_submission_id) lives on `ProblemResult`, not the row — tests access via `row.problems[pid]`.
 - **Mode is explicit, never inferred**: `compute_scoreboard(subs, mode=...)` raises `ValueError` on unknown mode; `cf` requires `start_at`, `assignment` requires `deadline`.
+
+## Todo 15 — determinism + budgets (2026-09-05)
+
+- **Corpus .out files are byte-identical to judge_submission stdout**: all 5 sampled corpus programs reproduce their golden .out byte-for-byte through the full judge path (runner subprocess → CLI stdout). The corpus is a valid golden source for judge-level determinism tests, not just engine-level ones.
+- **Determinism fingerprint excludes wall_ms/cpu_ms**: rejudge stability compares (verdict, error, per-case (verdict, steps, output, error)) — wall/cpu ms are legitimately variable measurements and must NOT be part of the byte-identical assertion.
+- **effective_limits via dataclasses.replace over field-filtered keys**: `{k: v for k, v in problem.items() if k in Limits.__dataclass_fields__}` — unknown keys (step_budget, compare_mode) are ignored by construction, keeping the module pure and the override contract explicit.
+- **Frozen Limits dataclass + replace() works cleanly**: `replace(Limits(), **overrides)` is the whole override mechanism; no mutation, no defaults drift.
+- **The runner's seed plumbing needed zero changes**: `tc.get("seed", 0)` (todo 10) already implements SPEC §(h); todo 15 only centralizes the default as `DEFAULT_SEED = 0` in budgets.py and proves it with a missing-seed-key test.
