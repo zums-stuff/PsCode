@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Todo:** 13 (plan lines 213-219)
-**Commit:** (recorded below after commit)
+**Commit:** 91b0197d9d12500903618545638c3e51134581ab (`feat(judge): complexity bands`)
 
 ## Deliverables
 - `judge/src/pseint_judge/complexity.py` — expected_steps / band / hard_step_budget / n_estimate
