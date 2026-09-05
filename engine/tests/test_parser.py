@@ -196,6 +196,21 @@ def test_leer():
     assert stmt.args == [Identifier(2, 5, "x")]
 
 
+def test_leer_bare():
+    stmts = body("Proceso p\nLeer\nEscribir x\nFinProceso\n")
+    assert len(stmts) == 2
+    assert isinstance(stmts[0], Leer)
+    assert stmts[0].args == []
+    assert isinstance(stmts[1], Escribir)
+
+
+def test_leer_bare_at_end():
+    stmts = body("Proceso p\nLeer\nFinProceso\n")
+    assert len(stmts) == 1
+    assert isinstance(stmts[0], Leer)
+    assert stmts[0].args == []
+
+
 def test_leer_multiple():
     stmt = single("Proceso p\nLeer x, y, z\nFinProceso\n")
     assert isinstance(stmt, Leer)
@@ -654,6 +669,57 @@ def test_array_index():
     assert isinstance(stmt.value, ArrayIndex)
     assert stmt.value.array == Identifier(2, 5, "arr")
     assert stmt.value.index == IntegerLiteral(2, 9, 3)
+
+
+def test_array_index_multi_dim_expression():
+    stmt = single("Proceso p\nx <- a[1, 2]\nFinProceso\n")
+    assert isinstance(stmt.value, ArrayIndex)
+    assert stmt.value.array == Identifier(2, 5, "a")
+    assert stmt.value.index == IntegerLiteral(2, 7, 1)
+    assert stmt.value.indices == [IntegerLiteral(2, 10, 2)]
+
+
+def test_array_element_assignment():
+    stmt = single("Proceso p\na[1] <- 5\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert isinstance(stmt.target, ArrayIndex)
+    assert stmt.target.array == Identifier(2, 0, "a")
+    assert stmt.target.index == IntegerLiteral(2, 2, 1)
+    assert stmt.target.indices == []
+    assert stmt.value == IntegerLiteral(2, 8, 5)
+
+
+def test_array_element_assignment_multi_dim():
+    stmt = single("Proceso p\na[1, 2] <- 5\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert isinstance(stmt.target, ArrayIndex)
+    assert stmt.target.array == Identifier(2, 0, "a")
+    assert stmt.target.index == IntegerLiteral(2, 2, 1)
+    assert stmt.target.indices == [IntegerLiteral(2, 5, 2)]
+    assert stmt.value == IntegerLiteral(2, 11, 5)
+
+
+def test_array_element_assignment_expression_index():
+    stmt = single("Proceso p\na[i + 1] <- x * 2\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert isinstance(stmt.target, ArrayIndex)
+    assert isinstance(stmt.target.index, BinaryOp)
+    assert stmt.target.index.op == "+"
+    assert isinstance(stmt.value, BinaryOp)
+    assert stmt.value.op == "*"
+
+
+def test_array_element_assignment_in_nested():
+    stmt = single(
+        "Proceso p\n"
+        "Si x > 0 Entonces\n"
+        "  a[1] <- 5\n"
+        "FinSi\n"
+        "FinProceso\n"
+    )
+    assert isinstance(stmt, Si)
+    assert isinstance(stmt.then_block[0], Assignment)
+    assert isinstance(stmt.then_block[0].target, ArrayIndex)
 
 
 def test_array_index_expression():

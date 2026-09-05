@@ -73,6 +73,7 @@ class FunctionCall(Expr):
 class ArrayIndex(Expr):
     array: Expr
     index: Expr
+    indices: list[Expr] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -135,6 +135,24 @@ _RESERVED_WORDS = frozenset(
     }
 )
 
+# Token types that can begin an expression (used to decide whether a bare
+# ``Leer`` has arguments).
+_EXPR_START = frozenset(
+    {
+        TokenType.INTEGER,
+        TokenType.REAL,
+        TokenType.STRING,
+        TokenType.VERDADERO,
+        TokenType.FALSO,
+        TokenType.IDENTIFIER,
+        TokenType.LPAREN,
+        TokenType.LBRACKET,
+        TokenType.PLUS,
+        TokenType.MINUS,
+        TokenType.NOT,
+    }
+) | _BUILTIN_FUNCS
+
 
 class ParseError(Exception):
     """A syntax error in the PseInt source.
@@ -365,6 +383,25 @@ class _Parser:
             return Assignment(
                 tok.line, tok.col, Identifier(tok.line, tok.col, tok.value), value
             )
+        if nxt.type is TokenType.LBRACKET:
+            # Array element assignment: identifier "[" expr {"," expr} "]" "<-" expr
+            self.advance()  # identifier
+            self.advance()  # [
+            first = self._parse_expr()
+            indices: list = []
+            while self.match(TokenType.COMMA):
+                indices.append(self._parse_expr())
+            self.expect(TokenType.RBRACKET, "']'")
+            self.expect(TokenType.ASSIGN, "'<-'")
+            value = self._parse_expr()
+            target = ArrayIndex(
+                tok.line,
+                tok.col,
+                Identifier(tok.line, tok.col, tok.value),
+                first,
+                indices,
+            )
+            return Assignment(tok.line, tok.col, target, value)
         # SubProceso call: identifier ["(" [expr_list] ")"]
         name = self.advance()
         args: list = []
@@ -416,7 +453,9 @@ class _Parser:
 
     def _parse_leer(self) -> Leer:
         tok = self.advance()  # LEER
-        args = self._parse_expr_list()
+        args: list = []
+        if self.peek().type in _EXPR_START:
+            args = self._parse_expr_list()
         return Leer(tok.line, tok.col, args)
 
     def _parse_escribir(self) -> Escribir:
@@ -689,13 +728,17 @@ class _Parser:
                     self.expect(TokenType.RPAREN, "')'")
                 return FunctionCall(tok.line, tok.col, tok.value, args)
             if self.match(TokenType.LBRACKET):
-                index = self._parse_expr()
+                first = self._parse_expr()
+                indices: list = []
+                while self.match(TokenType.COMMA):
+                    indices.append(self._parse_expr())
                 self.expect(TokenType.RBRACKET, "']'")
                 return ArrayIndex(
                     tok.line,
                     tok.col,
                     Identifier(tok.line, tok.col, tok.value),
-                    index,
+                    first,
+                    indices,
                 )
             return Identifier(tok.line, tok.col, tok.value)
         if t is TokenType.LPAREN:
