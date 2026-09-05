@@ -1,0 +1,82 @@
+Task 2: Write the pinned dialect spec (SPEC.md)
+Evidence file: /home/zum/Documents/Aula CISCO/Interprete/.omo/evidence/task-2-pseint-judge.txt
+Date: 2026-09-05
+
+=== ACCEPTANCE CHECKLIST ===
+
+Section presence:
+  (a) Grammar EBNF           — PASS (## (a) Grammar EBNF)
+  (b) Keyword Table          — PASS (## (b) Keyword Table)
+  (c) Types and Conversion Matrix — PASS (## (c) Types and Conversion Matrix)
+  (d) Operator Precedence    — PASS (## (d) Operator Precedence)
+  (e) Escribir Formatting Table — PASS (## (e) Escribir Formatting Table)
+  (f) Leer Parsing Rules     — PASS (## (f) Leer Parsing Rules)
+  (g) Step-Counting Rules    — PASS (## (g) Step-Counting Rules)
+  (h) Deterministic Runtime  — PASS (## (h) Deterministic Runtime)
+  (i) Runtime-Error Taxonomy — PASS (## (i) Runtime-Error Taxonomy)
+  (j) Comparison Contract    — PASS (## (j) Comparison Contract)
+  (k) Complexity Annotation Schema — PASS (## (k) Complexity Annotation Schema)
+  Diff-from-Official PSeInt  — PASS (## Diff-from-Official PSeInt, 18 entries with one-line rationales)
+  Version History            — PASS (## Version History)
+
+3 golden Escribir examples: PASS (Examples 1, 2, 3 in section (e))
+COEFFICIENT TABLE exact values: PASS (O(1)=50, O(log n)=50·log2(n+2), O(n)=20n+50, O(n log n)=20n·log2(n+2)+50, O(n²)=5n²+50, O(n³)=2n³+50, O(2ⁿ)=2^(n+4), other→step_budget REQUIRED)
+Diff-from-official with one-line rationales: PASS (18 rows)
+
+=== VERIFICATION COMMANDS ===
+
+$ grep -c "^## " spec/SPEC.md
+13
+
+$ grep "^## " spec/SPEC.md
+## (a) Grammar EBNF
+## (b) Keyword Table
+## (c) Types and Conversion Matrix
+## (d) Operator Precedence
+## (e) Escribir Formatting Table
+## (f) Leer Parsing Rules
+## (g) Step-Counting Rules
+## (h) Deterministic Runtime
+## (i) Runtime-Error Taxonomy
+## (j) Comparison Contract
+## (k) Complexity Annotation Schema
+## Diff-from-Official PSeInt
+## Version History
+
+$ grep -ci "TODO\|FIXME\|placeholder\|blank" spec/SPEC.md
+5 (all false positives: "todo 8", "todo 13" are plan references; "blank" appears in normal prose about comparison contract)
+
+=== COMMIT ===
+
+$ git log --oneline -1
+da3eb31 docs(spec): pin PseInt dialect spec
+
+=== SUMMARY ===
+
+All acceptance criteria met:
+- spec/SPEC.md exists with all mandatory sections (a)-(k) with non-empty content
+- grep -c "^## " spec/SPEC.md = 13 >= 12
+- No section left as TODO/placeholder/blank
+- Diff-from-official section has 18 decisions, each with a one-line rationale
+- 3 golden Escribir examples included verbatim
+- COEFFICIENT TABLE matches normative values exactly
+- Commit: da3eb31 docs(spec): pin PseInt dialect spec
+
+=== FIX APPLIED (2026-09-05) ===
+
+Defect found: EBNF `program` rule had mandatory square brackets for param_list, but golden examples (Ej1, Ej2, Ej3) use `Proceso Ej1` without brackets. Real PSeInt allows `Proceso nombre` without brackets.
+
+Fix: Changed line 20 from:
+  program ::= "Proceso" identifier "[" [param_list] "]" newline block "FinProceso"
+to:
+  program ::= "Proceso" identifier ["[" param_list "]"] newline block "FinProceso"
+
+Added clarifying note after the array-indexing note:
+  "The parameter list brackets are optional: `Proceso nombre` and `Proceso nombre [a, b]` are both valid."
+
+Re-verification after fix:
+- grep -c "^## " spec/SPEC.md = 13 >= 12 ✓
+- No TODO/placeholder sections ✓
+- All 13 sections present ✓
+
+New commit: 51bd983 docs(spec): fix EBNF program rule - optional param brackets

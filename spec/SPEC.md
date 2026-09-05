@@ -17,7 +17,7 @@
 The following EBNF describes the complete pinned dialect. Keywords are case-insensitive. Identifiers may contain accented characters and eñe.
 
 ```ebnf
-program         ::= "Proceso" identifier "[" [param_list] "]" newline block "FinProceso"
+program         ::= "Proceso" identifier ["[" param_list "]"] newline block "FinProceso"
 param_list      ::= param ("," param)*
 param           ::= [direction] identifier [":" type]
 direction       ::= "Por Referencia" | "Por Valor"
@@ -93,6 +93,7 @@ comment         ::= "//" {any_char_until_eol}
 - `HACER...MIENTRAS QUE` is the flexible-syntax variant of `Mientras...Hacer...FinMientras`.
 - `De Otro Modo` is the flexible-syntax variant of `Otherwise` in `Segun`.
 - Array indexing uses `[expr]` (square brackets), not parentheses.
+- The parameter list brackets are optional: `Proceso nombre` and `Proceso nombre [a, b]` are both valid.
 - Comments are `//` to end-of-line only; no block comments.
 - String literals use double quotes; character literals use double quotes with a single character.
 
