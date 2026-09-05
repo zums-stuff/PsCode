@@ -9,10 +9,11 @@ Public API::
 
     evaluate(program: Program, input_text: str = "", seed: int = 0) -> EvalResult
 
-The evaluator only COUNTS steps; step budgets / wall-clock limits are a
-runner-level option (todo 7). SubProceso/Funcion execution, arrays and
-built-in functions are todo 6 — encountering them raises a clear runtime
-error instead of crashing with a Python exception.
+The evaluator counts steps and optionally enforces hard limits (step
+budget, output cap, array caps) passed to :func:`evaluate` (todo 7);
+wall-clock limits remain a runner-level option. SubProceso/Funcion
+execution, arrays and built-in functions are todo 6 — encountering them
+raises a clear runtime error instead of crashing with a Python exception.
 """
 
 from __future__ import annotations
@@ -216,7 +217,14 @@ def _int_to_char(value: int) -> str:
 class Evaluator:
     """Executes a :class:`Program` AST, counting steps exactly per §(g)."""
 
-    def __init__(self, input_text: str = "", seed: int = 0) -> None:
+    def __init__(
+        self,
+        input_text: str = "",
+        seed: int = 0,
+        step_budget: int | None = None,
+        output_cap: int | None = None,
+        max_array_elements: int = 1_000_000,
+    ) -> None:
         self._env = Env()
         self._steps = 0
         self._output = ""
@@ -234,6 +242,12 @@ class Evaluator:
         self._subprocesos: dict[str, SubProceso] = {}
         self._total_array_elements = 0
         self._in_function = False
+        # Optional runner-level limits (todo 7); None = unlimited. Defaults
+        # preserve the pre-todo-7 behavior exactly.
+        self._step_budget = step_budget
+        self._output_cap = output_cap
+        self._max_array_elements = max_array_elements
+        self._max_total_array_elements = 4 * max_array_elements
 
     # -- public API ---------------------------------------------------------
 
@@ -276,6 +290,7 @@ class Evaluator:
 
     def _exec_stmt(self, stmt: object) -> None:
         self._steps += 1  # each statement = 1 step (SPEC §(g))
+        self._check_step_budget(stmt)
         if isinstance(stmt, Assignment):
             self._exec_assignment(stmt)
         elif isinstance(stmt, Definir):
@@ -354,6 +369,7 @@ class Evaluator:
             return
         for arg in stmt.args:
             self._steps += 1  # each Leer argument = 1 step (SPEC §(g))
+            self._check_step_budget(arg)
             if not isinstance(arg, Identifier):
                 raise self._err("ERR_TYPE", "Leer solo acepta variables", arg)
             token = self._next_token(stmt)
@@ -365,6 +381,7 @@ class Evaluator:
         parts: list[str] = []
         for arg in stmt.args:
             self._steps += 1  # each Escribir argument = 1 step (SPEC §(g))
+            self._check_step_budget(arg)
             v = self._eval_expr(arg)
             parts.append(format_value(v.value))
         text = "".join(parts)
@@ -372,6 +389,15 @@ class Evaluator:
             self._output += text
         else:
             self._output += text + "\n"
+        if (
+            self._output_cap is not None
+            and len(self._output.encode("utf-8")) > self._output_cap
+        ):
+            raise self._err(
+                "ERR_OUTPUT_CAP",
+                f"salida excede el límite de {self._output_cap} bytes",
+                stmt,
+            )
 
     def _exec_si(self, stmt: Si) -> None:
         if self._eval_condition(stmt.condition):
@@ -387,6 +413,7 @@ class Evaluator:
             if case.label is None:
                 continue  # De Otro Modo has no condition to check
             self._steps += 1  # each case check = 1 step (SPEC §(g))
+            self._check_step_budget(stmt)
             if case.label == v.value:
                 self._exec_block(case.block)
                 return
@@ -430,6 +457,7 @@ class Evaluator:
         self._env.set(stmt.var.name, current, var_type)
         while True:
             self._steps += 1  # iteration check = 1 step (SPEC §(g))
+            self._check_step_budget(stmt)
             if step.value >= 0:
                 done = current > end.value
             else:
@@ -438,6 +466,7 @@ class Evaluator:
                 return
             self._exec_block(stmt.block)
             self._steps += 1  # implicit increment = 1 step (SPEC §(g))
+            self._check_step_budget(stmt)
             current = current + step.value
             if type_of(current) != var_type:
                 current = self._convert(
@@ -572,15 +601,15 @@ class Evaluator:
         total = 1
         for s in sizes:
             total *= s
-        if total > _MAX_ARRAY_ELEMENTS:
+        if total > self._max_array_elements:
             raise self._err(
                 "ERR_DIM",
-                f"arreglo excede {_MAX_ARRAY_ELEMENTS} elementos",
+                f"arreglo excede {self._max_array_elements} elementos",
                 node,
             )
         if (
             self._total_array_elements - exclude_current_total + total
-            > _MAX_TOTAL_ARRAY_ELEMENTS
+            > self._max_total_array_elements
         ):
             raise self._err(
                 "ERR_DIM",
@@ -593,6 +622,7 @@ class Evaluator:
         self, target: ArrayIndex, value_expr: object, stmt: object
     ) -> None:
         self._steps += 1  # array indexing = operator evaluation (SPEC §(g))
+        self._check_step_budget(stmt)
         arr = self._resolve_array(target.array, stmt)
         v = self._eval_expr(value_expr)
         off = self._eval_indices(arr, target, stmt)
@@ -600,6 +630,7 @@ class Evaluator:
 
     def _eval_array_index(self, expr: ArrayIndex) -> Value:
         self._steps += 1  # array indexing = operator evaluation (SPEC §(g))
+        self._check_step_budget(expr)
         arr = self._resolve_array(expr.array, expr)
         off = self._eval_indices(arr, expr, expr)
         elem = arr.data[off]
@@ -663,6 +694,7 @@ class Evaluator:
 
     def _eval_function_call(self, expr: FunctionCall) -> Value:
         self._steps += 1  # function call = 1 step (SPEC §(g))
+        self._check_step_budget(expr)
         name = expr.name.lower()
         if name in _BUILTIN_IMPL:
             return _BUILTIN_IMPL[name](self, expr)
@@ -786,6 +818,7 @@ class Evaluator:
 
     def _eval_condition(self, expr: object) -> bool:
         self._steps += 1  # condition evaluation = 1 step (SPEC §(g))
+        self._check_step_budget(expr)
         v = self._eval_expr(expr)
         if v.type != LOGICO:
             raise self._err("ERR_TYPE", "la condición debe ser Logico", expr)
@@ -829,6 +862,7 @@ class Evaluator:
 
     def _eval_unary(self, expr: UnaryOp) -> Value:
         self._steps += 1  # operator evaluation = 1 step (SPEC §(g))
+        self._check_step_budget(expr)
         operand = self._eval_expr(expr.operand)
         if expr.op in ("+", "-"):
             if operand.type not in (ENTERO, REAL):
@@ -846,6 +880,7 @@ class Evaluator:
 
     def _eval_binary(self, expr: BinaryOp) -> Value:
         self._steps += 1  # operator evaluation = 1 step (SPEC §(g))
+        self._check_step_budget(expr)
         left = self._eval_expr(expr.left)
         right = self._eval_expr(expr.right)
         op = expr.op
@@ -1031,6 +1066,15 @@ class Evaluator:
     def _err(code: str, message: str, node: object) -> RuntimeError:
         return RuntimeError(code, message, node.line, node.col)
 
+    def _check_step_budget(self, node: object) -> None:
+        """Raise ERR_STEP_LIMIT once the hard step budget is exceeded."""
+        if self._step_budget is not None and self._steps > self._step_budget:
+            raise self._err(
+                "ERR_STEP_LIMIT",
+                f"límite de pasos excedido (máximo {self._step_budget})",
+                node,
+            )
+
 
 def _is_numeric(v: Value) -> bool:
     return v.type in (ENTERO, REAL)
@@ -1062,10 +1106,27 @@ _BUILTIN_IMPL = {
 }
 
 
-def evaluate(program: Program, input_text: str = "", seed: int = 0) -> EvalResult:
+def evaluate(
+    program: Program,
+    input_text: str = "",
+    seed: int = 0,
+    step_budget: int | None = None,
+    output_cap: int | None = None,
+    max_array_elements: int = 1_000_000,
+) -> EvalResult:
     """Evaluate ``program`` and return output, steps and any runtime error.
 
     ``input_text`` is the program's standard input (split on ``\\s+`` per
-    SPEC §(f)). ``seed`` is reserved for AZAR (todo 6) and currently unused.
+    SPEC §(f)). ``seed`` seeds AZAR/RC (SPEC §(h)). ``step_budget`` and
+    ``output_cap`` are optional hard limits (None = unlimited); the step
+    budget raises ERR_STEP_LIMIT and the output cap ERR_OUTPUT_CAP once
+    exceeded. ``max_array_elements`` is the per-array cap (the per-run total
+    cap is 4x it). Defaults preserve the pre-todo-7 behavior exactly.
     """
-    return Evaluator(input_text=input_text, seed=seed).run(program)
+    return Evaluator(
+        input_text=input_text,
+        seed=seed,
+        step_budget=step_budget,
+        output_cap=output_cap,
+        max_array_elements=max_array_elements,
+    ).run(program)

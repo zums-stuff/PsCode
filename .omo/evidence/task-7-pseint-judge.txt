@@ -1,0 +1,134 @@
+# Task 7 — CLI runner + JSON report contract + validate subcommand
+
+**Date:** 2026-09-05
+**Plan ref:** .omo/plans/pseint-judge.md lines 164-170 (todo 7)
+**Status:** DONE — all acceptance criteria asserted
+
+## Deliverables
+
+- `engine/src/pseint_engine/cli.py` — argparse CLI, `main(argv=None) -> int`
+- `engine/pyproject.toml` — `[project.scripts] pseint-engine = "pseint_engine.cli:main"`
+- `engine/src/pseint_engine/evaluator.py` — optional limits (step_budget, output_cap, max_array_elements)
+- `engine/tests/test_cli.py` — 23 tests (TDD, red first: 19 failed before implementation)
+
+## CLI contract (the single contract the worker/sandbox wrapper, todo 34, uses)
+
+```
+pseint-engine run <source.psc> [--input FILE] [--seed N]
+    [--step-budget N | --max-steps N] [--max-output-bytes N]
+    [--max-array-elements N] [--report FILE]
+pseint-engine validate <source.psc>
+```
+
+- Input sources: `--input <file>` when given, else stdin (read fully).
+- Program stdout written to stdout RAW (exact bytes via `sys.stdout.buffer`,
+  no wrapping, no diagnostics). Report JSON written ONLY to `--report` file
+  (parent dirs created); NEVER to stdout.
+- `--step-budget` and `--max-steps` are aliases for the same flag.
+- Defaults: `--seed 0`, `--max-output-bytes 1_048_576` (1MB, M13),
+  `--max-array-elements 1_000_000`, `--step-budget` unlimited.
+- Custom argparse error handler (`_Parser.error` raises `_ArgError` instead of
+  argparse's default exit 2, which would collide with runtime-error=2).
+
+## Exit-code table (deterministic)
+
+| code | meaning |
+|------|---------|
+| 0    | ok |
+| 1    | usage / IO error (missing source, unreadable --input, unknown flag) — message on stderr |
+| 2    | runtime error (any RE incl. ERR_SYNTAX from LexError/ParseError) |
+| 3    | step limit exceeded (ERR_STEP_LIMIT) |
+| 4    | output cap exceeded (ERR_OUTPUT_CAP) |
+
+## Report JSON schema (written to --report)
+
+```json
+{"steps": int, "error": {"code","message","line","col"} | null,
+ "exit_ok": bool, "output_bytes": int}
+```
+
+- `error` is `null` on success; on failure carries the SPEC §(i) code
+  (ERR_SYNTAX for LexError/ParseError, ERR_DIV0/ERR_TYPE/ERR_BOUNDS/ERR_DIM/
+  ERR_RECURSION/ERR_EOF_INPUT/ERR_STEP_LIMIT/ERR_OUTPUT_CAP for runtime).
+- `output_bytes` = `len(output.encode("utf-8"))` — the actual bytes written.
+- Syntax-error report: `steps: 0`, `output_bytes: 0`, `exit_ok: false`.
+
+## validate subcommand
+
+- Prints JSON to stdout: `{"ok": true, "errors": []}` or
+  `{"ok": false, "errors": [{"code":"ERR_SYNTAX","message","line","col"}]}`.
+- Exit 0 either way (validation result is the JSON, not the exit code);
+  missing source file → exit 1 with stderr message.
+- Consumed by the frontend inline-error endpoint (todo 29).
+
+## Evaluator-limit design (extend, don't break)
+
+`Evaluator.__init__` and `evaluate()` gained optional params:
+
+```python
+step_budget: int | None = None          # None = unlimited
+output_cap: int | None = None           # None = unlimited
+max_array_elements: int = 1_000_000     # per-array cap; per-run total = 4x
+```
+
+- Step budget: `_check_step_budget(node)` raises ERR_STEP_LIMIT (Spanish
+  message "límite de pasos excedido (máximo N)") once `_steps > step_budget`.
+  Wired into ALL 12 step-increment sites (`_exec_stmt`, Leer/Escribir args,
+  Segun case checks, Para iteration check + increment, condition evaluation,
+  unary/binary operators, array indexing read/write, function calls) so the
+  budget is a true HARD TLE cap — catches empty-body loops that never reach
+  `_exec_stmt` (verified by `test_evaluator_step_budget_catches_empty_loop`).
+- Output cap: in `_exec_escribir`, after appending, if
+  `len(self._output.encode("utf-8")) > output_cap` → ERR_OUTPUT_CAP.
+- Array caps: `_check_array_caps` now uses `self._max_array_elements` and
+  `self._max_total_array_elements = 4 * max_array_elements` (defaults
+  1_000_000 / 4_000_000 — identical to the old module constants).
+- Defaults preserve pre-todo-7 behavior exactly: all 448 pre-existing tests
+  stay green (verified: 471 total pass = 448 + 23 new).
+
+## Golden round-trips (byte-exact stdout + parsed JSON report)
+
+1. **sum-of-n loop with Leer** (`G1_SUMA`, input `10`) → stdout `55\n`
+   (3 bytes), report `steps=12 > 0`, `error=null`, `exit_ok=true`,
+   `output_bytes=3`.
+2. **Escribir formatting** (`G2_FORMATO`) → stdout
+   `2.5 hola Verdadero\n1.5\n2.0\n` (26 bytes), report `steps>0`,
+   `exit_ok=true`, `output_bytes=26`.
+3. **recursion factorial** (`G3_FACTORIAL`, input `10`) → stdout
+   `3628800\n` (8 bytes), report `steps>0`, `exit_ok=true`,
+   `output_bytes=8`.
+
+## QA scenarios (plan line 169)
+
+- Happy: `echo "1 2" | pseint-engine run suma.psc --seed 0 --report r.json`
+  → stdout `1\n` (raw, byte-exact), exit 0, r.json
+  `{"steps": 12, "error": null, "exit_ok": true, "output_bytes": 2}`.
+- Failure: `pseint-engine run suma.psc --input suma.in --step-budget 3
+  --report fail.json` → exit 3, fail.json
+  `{"steps": 4, "error": {"code": "ERR_STEP_LIMIT", "message": "límite de
+  pasos excedido (máximo 3)", "line": 4, "col": 4}, "exit_ok": false,
+  "output_bytes": 0}`.
+- Output cap: `--max-output-bytes 100` on a 100k-iteration Escribir loop →
+  exit 4, report.error.code=ERR_OUTPUT_CAP.
+- Div0 → exit 2, report.error.code=ERR_DIV0 with line/col.
+- Syntax error → exit 2, report.error.code=ERR_SYNTAX, steps=0.
+- validate on bad input → `{"ok": false, "errors":[{code:ERR_SYNTAX, line,
+  col}]}`, exit 0.
+- Usage errors (missing source, unknown flag, missing --input) → exit 1,
+  message on stderr.
+- Seed determinism: AZAR(100) seed 0 → `49\n97\n53\n5\n33\n` (pinned
+  sequence), identical across runs; seed 1 differs.
+- Report never on stdout: stdout is byte-exact program output only.
+
+## Verification commands
+
+```
+cd engine
+../.venv/bin/python -m pytest tests/ -q        # 471 passed (448 pre-existing + 23 new)
+../.venv/bin/ruff check src                     # All checks passed!
+../.venv/bin/pip install -e .                   # regenerates pseint-engine console script
+```
+
+## Commit
+
+`feat(engine): CLI runner and report contract` — hash recorded after commit.
