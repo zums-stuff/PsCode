@@ -87,3 +87,37 @@ QA SCENARIOS
 
 Commit: a170315 — feat(engine): subprocesos, arrays, built-ins
         d3bfbd0 — chore(evidence): add task-6 receipt
+
+EDGE-CASE FIX ROUND (reviewer-found defects)
+-------------------------------------------
+  Commit: d3a15bf — fix(engine): guard builtin domains, arity, redimensionar caps
+  Defects fixed (all verified by probes: ZERO Python exceptions leak):
+    A. AZAR(0)/AZAR(-5) -> ERR_TYPE "AZAR requiere un límite positivo"
+       (was: unhandled ValueError from randrange)
+    B. LN(0)/LN(-1) -> ERR_TYPE "LN requiere un argumento positivo";
+       EXP(1000) -> ERR_TYPE "EXP excede el rango numérico" (OverflowError caught).
+       Audit: SEN/COS/ATAN total, TRUNC/REDON safe, RC/LARGO/SUBCADENA/
+       CONCATENAR/MAYUSCULAS/MINUSCULAS/FechaActual/HoraActual safe.
+    C. Redimensionar near-cap legal resize (3.5M -> resize a to 800K = 3.8M net)
+       now OK; _check_array_caps gained exclude_current_total param (single
+       source of truth); redundant gross check removed. Array literals now
+       routed through the same cap logic (per-array 1M + per-run 4M -> ERR_DIM).
+    D. Arity mismatch -> ERR_TYPE "la llamada a X esperaba N argumentos,
+       recibió M" (extra args no longer silently dropped; missing args no
+       longer give confusing "variable no definida").
+    E. (-8) ^ 0.5 (complex result) -> ERR_TYPE "potencia con base negativa y
+       exponente fraccionario"; ^ also guards OverflowError.
+  Regression tests: 13 added to test_subprocesos_arrays_builtins.py
+  (test_azar_zero/negative_is_err_type, test_ln_zero/negative_is_err_type,
+   test_exp_overflow_is_err_type, test_redimensionar_legal_resize_near_cap,
+   test_redimensionar_exceeding_net_cap_is_err_dim,
+   test_redimensionar_exceeding_per_array_cap_is_err_dim,
+   test_array_literal_over_total_cap_is_err_dim,
+   test_subproceso_extra/missing_arg_is_err_type,
+   test_funcion_extra_arg_is_err_type,
+   test_negative_base_fractional_exponent_is_err_type).
+  Note: per-array literal cap (>1M elements in one literal) is NOT directly
+  testable — the parser's 1000-token progress guard rejects a 1M-element
+  literal source; the per-array cap path is covered via Redimensionar and the
+  literal total-cap path via 4x1M Dimension + 1-element literal.
+  Suite after fix: 448 passed (435 + 13); ruff check src clean.
