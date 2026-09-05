@@ -15,9 +15,34 @@ REAL = "real"
 LOGICO = "logico"
 CARACTER = "caracter"
 CADENA = "cadena"
+# Array type — not one of the five scalar types; used for Dimension'd values.
+ARREGLO = "arreglo"
 
-# All five type names, for validation.
+# All five scalar type names, for validation.
 TYPE_NAMES = frozenset({ENTERO, REAL, LOGICO, CARACTER, CADENA})
+
+
+class Array:
+    """A PseInt array: fixed dimensions plus a flat element store.
+
+    ``sizes`` is the per-dimension length (row-major). ``data`` is a flat
+    list of :class:`Value` objects (or ``None`` for uninitialized elements).
+    The object is mutable and shared by reference, so a by-reference array
+    parameter mutates the caller's array in place.
+    """
+
+    __slots__ = ("sizes", "data")
+
+    def __init__(self, sizes: list[int]) -> None:
+        self.sizes = list(sizes)
+        total = 1
+        for s in self.sizes:
+            total *= s
+        self.data: list = [None] * total
+
+    def total(self) -> int:
+        """Total number of elements (product of the dimension sizes)."""
+        return len(self.data)
 
 
 class RuntimeError(Exception):
@@ -54,10 +79,15 @@ class EvalResult:
 
 @dataclass
 class _Scope:
-    """One variable scope: values plus their fixed/inferred types."""
+    """One variable scope: values, fixed/inferred types, and aliases.
+
+    ``refs`` maps a by-reference parameter name to the caller's variable
+    name it aliases (used by SubProceso/Funcion Por Referencia params).
+    """
 
     values: dict[str, object] = field(default_factory=dict)
     types: dict[str, str] = field(default_factory=dict)
+    refs: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -92,27 +122,60 @@ class Env:
         if type_name is not None:
             self._scopes[-1].types[name] = type_name.lower()
 
+    def bind_reference(self, name: str, target: str) -> None:
+        """Alias ``name`` (a by-reference param) to the caller's ``target``.
+
+        Reads and writes of ``name`` forward to ``target`` in the caller's
+        scope, so mutations are visible at the caller.
+        """
+        self._scopes[-1].refs[name] = target
+
+    def _resolve(self, name: str) -> tuple[int, str] | None:
+        """Return ``(scope_index, actual_name)`` for ``name``, following refs.
+
+        Returns ``None`` when ``name`` is not bound in any scope. A reference
+        alias resolves to its target in an outer scope.
+        """
+        for i in reversed(range(len(self._scopes))):
+            s = self._scopes[i]
+            if name in s.refs:
+                target = s.refs[name]
+                for j in reversed(range(i)):
+                    ts = self._scopes[j]
+                    if target in ts.values or target in ts.types:
+                        return j, target
+                return None
+            if name in s.values or name in s.types:
+                return i, name
+        return None
+
     def has(self, name: str) -> bool:
         """True if the variable is known in any scope (declared or assigned)."""
-        return any(name in s.values or name in s.types for s in self._scopes)
+        return self._resolve(name) is not None
 
     def is_initialized(self, name: str) -> bool:
         """True if the variable has been assigned a value."""
-        return any(name in s.values for s in self._scopes)
+        r = self._resolve(name)
+        if r is None:
+            return False
+        i, actual = r
+        return actual in self._scopes[i].values
 
     def get(self, name: str) -> object:
         """Return the variable's value (innermost scope wins)."""
-        for s in reversed(self._scopes):
-            if name in s.values:
-                return s.values[name]
-        raise KeyError(name)
+        r = self._resolve(name)
+        if r is None:
+            raise KeyError(name)
+        i, actual = r
+        return self._scopes[i].values[actual]
 
     def get_type(self, name: str) -> str | None:
         """Return the variable's fixed type, or ``None`` if untyped."""
-        for s in reversed(self._scopes):
-            if name in s.types:
-                return s.types[name]
-        return None
+        r = self._resolve(name)
+        if r is None:
+            return None
+        i, actual = r
+        return self._scopes[i].types.get(actual)
 
     def set(self, name: str, value: object, value_type: str) -> None:
         """Assign ``value`` to ``name`` and fix its type to ``value_type``.
@@ -121,10 +184,11 @@ class Env:
         (so a declared outer variable is updated in place); otherwise it is
         created in the innermost scope.
         """
-        for s in reversed(self._scopes):
-            if name in s.values or name in s.types:
-                s.values[name] = value
-                s.types[name] = value_type
-                return
+        r = self._resolve(name)
+        if r is not None:
+            i, actual = r
+            self._scopes[i].values[actual] = value
+            self._scopes[i].types[actual] = value_type
+            return
         self._scopes[-1].values[name] = value
         self._scopes[-1].types[name] = value_type

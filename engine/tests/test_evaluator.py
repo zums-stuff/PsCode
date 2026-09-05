@@ -969,33 +969,31 @@ def test_recursion_cap_exit_frame_releases_slot():
 
 
 # ---------------------------------------------------------------------------
-# Not-yet-implemented constructs (todo 6) — clear RE, never a Python crash
+# Arrays / built-ins / subprocesos (todo 6) — implemented; error paths only
 # ---------------------------------------------------------------------------
 
 
-def test_array_element_assignment_raises_clear_re():
+def test_array_element_assignment_undeclared_is_err_dim():
     err = run_err("Proceso P\n    a[1] <- 5\nFinProceso")
     assert err.code == "ERR_DIM"
-    assert "arrays" in err.message.lower()
 
 
-def test_array_index_read_raises_clear_re():
+def test_array_index_read_undeclared_is_err_dim():
     err = run_err("Proceso P\n    x <- a[1]\nFinProceso")
     assert err.code == "ERR_DIM"
 
 
-def test_dimension_raises_clear_re():
-    err = run_err("Proceso P\n    Dimension a[10]\nFinProceso")
-    assert err.code == "ERR_DIM"
+def test_dimension_declares_array():
+    result = run_ok("Proceso P\n    Dimension a[10]\n    a[0] <- 1\nFinProceso")
+    assert result.error is None
 
 
-def test_builtin_call_raises_clear_re():
-    err = run_err("Proceso P\n    x <- AZAR(10)\nFinProceso")
-    assert err.code == "ERR_TYPE"
-    assert "AZAR" in err.message
+def test_builtin_call_works():
+    result = run_ok("Proceso P\n    x <- AZAR(10)\nFinProceso")
+    assert result.error is None
 
 
-def test_subproc_call_raises_clear_re():
+def test_subproc_call_undefined_is_err_type():
     err = run_err("Proceso P\n    saludar()\nFinProceso")
     assert err.code == "ERR_TYPE"
 

@@ -17,7 +17,10 @@ error instead of crashing with a Python exception.
 
 from __future__ import annotations
 
+import math
+import random
 import re
+import sys
 from dataclasses import dataclass
 
 from pseint_engine.ast_nodes import (
@@ -51,11 +54,13 @@ from pseint_engine.ast_nodes import (
     UnaryOp,
 )
 from pseint_engine.runtime import (
+    ARREGLO,
     CADENA,
     CARACTER,
     ENTERO,
     LOGICO,
     REAL,
+    Array,
     Env,
     EvalResult,
     RuntimeError,
@@ -64,6 +69,32 @@ from pseint_engine.runtime import (
 # Recursion depth cap — SPEC §(i) + Diff-from-Official #15 (1000 frames).
 # NOTE: the plan text says 500, but SPEC pins 1000; SPEC is authoritative.
 _MAX_RECURSION = 1000
+
+# Each PseInt call frame costs several Python frames (evaluator -> block ->
+# stmt -> expr -> call -> ...), so Python's default 1000-frame limit would
+# fire before our SPEC cap. Raise it with margin for the 1000-frame cap.
+sys.setrecursionlimit(20000)
+
+# Array caps (todo 6): max 3 dims, max 1_000_000 elements per array, and a
+# per-run total of 4_000_000 array elements -> ERR_DIM.
+_MAX_DIMS = 3
+_MAX_ARRAY_ELEMENTS = 1_000_000
+_MAX_TOTAL_ARRAY_ELEMENTS = 4_000_000
+
+# Fixed deterministic stubs (SPEC §(h)).
+_FECHA_ACTUAL = "2026-01-01"
+_HORA_ACTUAL = "12:00:00"
+
+# Alphabet for RC(n): deterministic lowercase letters.
+_RC_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
+
+
+class _ReturnSignal(Exception):  # noqa: N818 — control flow, not an error
+    """Internal control-flow signal carrying a Funcion's return value."""
+
+    def __init__(self, value: Value) -> None:
+        super().__init__()
+        self.value = value
 
 # PseInt literal grammars (SPEC §(a)): digit {digit} and digit {digit} "." digit
 # {digit}, with an optional sign accepted for Leer/conversion tokens.
@@ -81,6 +112,8 @@ class Value:
 
 def type_of(value: object) -> str:
     """Natural PseInt type of a Python runtime value."""
+    if isinstance(value, Array):
+        return ARREGLO
     if isinstance(value, bool):
         return LOGICO
     if isinstance(value, int):
@@ -196,17 +229,28 @@ class Evaluator:
         self._token_pos = 0
         self._recursion_depth = 0
         self._max_recursion = _MAX_RECURSION
-        self._seed = seed  # reserved for AZAR (todo 6)
+        self._seed = seed
+        self._rng = random.Random(seed)  # AZAR/RC (SPEC §(h))
+        self._subprocesos: dict[str, SubProceso] = {}
+        self._total_array_elements = 0
+        self._in_function = False
 
     # -- public API ---------------------------------------------------------
 
     def run(self, program: Program) -> EvalResult:
         """Execute the program, returning output, steps and any error."""
         try:
+            self._collect_subprocesos(program)
             self._exec_block(program.body)
             return EvalResult(output=self._output, steps=self._steps, error=None)
         except RuntimeError as e:
             return EvalResult(output=self._output, steps=self._steps, error=e)
+
+    def _collect_subprocesos(self, program: Program) -> None:
+        """Index SubProceso/Funcion declarations by name for call dispatch."""
+        for stmt in program.body:
+            if isinstance(stmt, SubProceso):
+                self._subprocesos[stmt.name.name] = stmt
 
     # -- recursion frame accounting (used by SubProceso/Funcion in todo 6) --
 
@@ -255,17 +299,19 @@ class Evaluator:
         elif isinstance(stmt, (Esperar, LimpiarPantalla)):
             pass  # no-ops; the statement step was already counted
         elif isinstance(stmt, SubProceso):
-            pass  # declaration; execution is todo 6
+            pass  # declaration; indexed by _collect_subprocesos
         elif isinstance(stmt, Retornar):
-            raise self._err(
-                "ERR_TYPE", "Retornar solo es válido dentro de una función", stmt
-            )
+            if not self._in_function:
+                raise self._err(
+                    "ERR_TYPE", "Retornar solo es válido dentro de una función", stmt
+                )
+            raise _ReturnSignal(self._eval_expr(stmt.value))
         elif isinstance(stmt, SubProcCall):
-            raise self._err(
-                "ERR_TYPE", f"subproceso no implementado (todo 6): {stmt.name}", stmt
-            )
-        elif isinstance(stmt, (Dimension, Redimensionar)):
-            raise self._err("ERR_DIM", "arrays no implementados (todo 6)", stmt)
+            self._exec_subproc_call(stmt)
+        elif isinstance(stmt, Dimension):
+            self._exec_dimension(stmt)
+        elif isinstance(stmt, Redimensionar):
+            self._exec_redimensionar(stmt)
         else:
             raise self._err(
                 "ERR_TYPE", f"sentencia no soportada: {type(stmt).__name__}", stmt
@@ -274,7 +320,8 @@ class Evaluator:
     def _exec_assignment(self, stmt: Assignment) -> None:
         target = stmt.target
         if isinstance(target, ArrayIndex):
-            raise self._err("ERR_DIM", "arrays no implementados (todo 6)", stmt)
+            self._exec_array_assignment(target, stmt.value, stmt)
+            return
         v = self._eval_expr(stmt.value)
         declared = self._env.get_type(target.name)
         if declared is not None and declared != v.type:
@@ -398,6 +445,323 @@ class Evaluator:
                 ).value
             self._env.set(stmt.var.name, current, var_type)
 
+    # -- subprocesos / funciones --------------------------------------------
+
+    def _exec_subproc_call(self, stmt: SubProcCall) -> None:
+        sub = self._subprocesos.get(stmt.name)
+        if sub is None:
+            raise self._err(
+                "ERR_TYPE", f"subproceso no definido: {stmt.name}", stmt
+            )
+        self._call_subproceso(sub, stmt.args, stmt)
+
+    def _call_subproceso(
+        self, sub: SubProceso, args: list, node: object
+    ) -> Value | None:
+        """Execute a SubProceso/Funcion body in a fresh scope.
+
+        Returns the Funcion's return value (or ``None`` for a SubProceso).
+        The callee's statements count toward the caller's step total via the
+        shared ``_steps`` counter; recursion is capped by ``_enter_frame``.
+        """
+        self._enter_frame(node)
+        self._env.push_scope()
+        prev_in_function = self._in_function
+        self._in_function = sub.is_function
+        try:
+            for param, arg_expr in zip(sub.params, args):
+                self._bind_param(param, arg_expr, node)
+            if sub.is_function:
+                try:
+                    self._exec_block(sub.block)
+                except _ReturnSignal as sig:
+                    v = sig.value
+                    if sub.return_type is not None:
+                        v = self._convert(v, sub.return_type.lower(), node)
+                    return v
+                raise self._err(
+                    "ERR_TYPE",
+                    f"la función {sub.name.name} no retornó un valor",
+                    node,
+                )
+            self._exec_block(sub.block)
+            return None
+        finally:
+            self._in_function = prev_in_function
+            self._env.pop_scope()
+            self._exit_frame()
+
+    def _bind_param(self, param: object, arg_expr: object, node: object) -> None:
+        """Bind one call argument to a parameter.
+
+        Por Referencia (and arrays by default) alias the caller's variable:
+        the param name is not shadowed, so reads/writes resolve outward to
+        the caller's scope. Por Valor binds a copy in the callee's scope.
+        """
+        if param.direction == "Por Referencia":
+            if not isinstance(arg_expr, Identifier):
+                raise self._err(
+                    "ERR_TYPE", "Por Referencia requiere una variable", node
+                )
+            self._env.bind_reference(param.name.name, arg_expr.name)
+            return
+        v = self._eval_expr(arg_expr)
+        if param.direction is None and v.type == ARREGLO:
+            self._env.bind_reference(param.name.name, arg_expr.name)
+            return
+        if param.type_name is not None and param.type_name.lower() != v.type:
+            v = self._convert(v, param.type_name.lower(), node)
+        self._env.set(param.name.name, v.value, v.type)
+
+    # -- arrays -------------------------------------------------------------
+
+    def _exec_dimension(self, stmt: Dimension) -> None:
+        sizes = self._eval_sizes(stmt.sizes, stmt)
+        arr = self._make_array(sizes, stmt)
+        self._env.set(stmt.name.name, arr, ARREGLO)
+
+    def _exec_redimensionar(self, stmt: Redimensionar) -> None:
+        name = stmt.name.name
+        if not self._env.has(name):
+            raise self._err("ERR_DIM", f"arreglo no declarado: {name}", stmt)
+        if self._env.get_type(name) != ARREGLO:
+            raise self._err("ERR_DIM", f"{name} no es un arreglo", stmt)
+        arr = self._env.get(name)
+        sizes = self._eval_sizes(stmt.sizes, stmt)
+        new_total = self._check_array_caps(sizes, stmt)
+        old_total = arr.total()
+        if self._total_array_elements - old_total + new_total > (
+            _MAX_TOTAL_ARRAY_ELEMENTS
+        ):
+            raise self._err(
+                "ERR_DIM",
+                "total de elementos de arreglos excede el límite",
+                stmt,
+            )
+        old_data = arr.data
+        arr.sizes = sizes
+        arr.data = [None] * new_total
+        for off in range(min(old_total, new_total)):
+            arr.data[off] = old_data[off]
+        self._total_array_elements = (
+            self._total_array_elements - old_total + new_total
+        )
+
+    def _eval_sizes(self, size_exprs: list, node: object) -> list[int]:
+        sizes: list[int] = []
+        for s in size_exprs:
+            v = self._eval_expr(s)
+            if v.type != ENTERO:
+                raise self._err("ERR_TYPE", "tamaño de arreglo debe ser Entero", node)
+            sizes.append(v.value)
+        return sizes
+
+    def _make_array(self, sizes: list[int], node: object) -> Array:
+        total = self._check_array_caps(sizes, node)
+        self._total_array_elements += total
+        return Array(sizes)
+
+    def _check_array_caps(self, sizes: list[int], node: object) -> int:
+        if len(sizes) > _MAX_DIMS:
+            raise self._err(
+                "ERR_DIM", f"máximo {_MAX_DIMS} dimensiones", node
+            )
+        total = 1
+        for s in sizes:
+            total *= s
+        if total > _MAX_ARRAY_ELEMENTS:
+            raise self._err(
+                "ERR_DIM",
+                f"arreglo excede {_MAX_ARRAY_ELEMENTS} elementos",
+                node,
+            )
+        if self._total_array_elements + total > _MAX_TOTAL_ARRAY_ELEMENTS:
+            raise self._err(
+                "ERR_DIM",
+                "total de elementos de arreglos excede el límite",
+                node,
+            )
+        return total
+
+    def _exec_array_assignment(
+        self, target: ArrayIndex, value_expr: object, stmt: object
+    ) -> None:
+        self._steps += 1  # array indexing = operator evaluation (SPEC §(g))
+        arr = self._resolve_array(target.array, stmt)
+        v = self._eval_expr(value_expr)
+        off = self._eval_indices(arr, target, stmt)
+        arr.data[off] = v
+
+    def _eval_array_index(self, expr: ArrayIndex) -> Value:
+        self._steps += 1  # array indexing = operator evaluation (SPEC §(g))
+        arr = self._resolve_array(expr.array, expr)
+        off = self._eval_indices(arr, expr, expr)
+        elem = arr.data[off]
+        if elem is None:
+            raise self._err(
+                "ERR_TYPE", "elemento de arreglo no inicializado", expr
+            )
+        return elem
+
+    def _eval_array_literal(self, expr: ArrayLiteral) -> Value:
+        elements = [self._eval_expr(e) for e in expr.elements]
+        arr = Array([len(elements)])
+        for i, v in enumerate(elements):
+            arr.data[i] = v
+        self._total_array_elements += len(elements)
+        return Value(arr, ARREGLO)
+
+    def _resolve_array(self, array_expr: object, node: object) -> Array:
+        if not isinstance(array_expr, Identifier):
+            raise self._err("ERR_DIM", "el arreglo debe ser un identificador", node)
+        name = array_expr.name
+        if not self._env.has(name):
+            raise self._err("ERR_DIM", f"arreglo no declarado: {name}", node)
+        if self._env.get_type(name) != ARREGLO:
+            raise self._err("ERR_DIM", f"{name} no es un arreglo", node)
+        return self._env.get(name)
+
+    def _eval_indices(
+        self, arr: Array, expr: object, node: object
+    ) -> int:
+        if isinstance(expr, ArrayIndex):
+            index_exprs = [expr.index] + expr.indices
+        else:
+            raise self._err("ERR_TYPE", "índice de arreglo inválido", node)
+        idx_vals: list[int] = []
+        for ie in index_exprs:
+            v = self._eval_expr(ie)
+            if v.type != ENTERO:
+                raise self._err("ERR_TYPE", "índice de arreglo debe ser Entero", node)
+            idx_vals.append(v.value)
+        if len(idx_vals) != len(arr.sizes):
+            raise self._err(
+                "ERR_DIM",
+                "número de índices no coincide con las dimensiones",
+                node,
+            )
+        off = 0
+        for i, idx in enumerate(idx_vals):
+            size = arr.sizes[i]
+            if idx < 0 or idx >= size:
+                raise self._err(
+                    "ERR_BOUNDS",
+                    f"índice {idx} fuera de límites [0, {size})",
+                    node,
+                )
+            off = off * size + idx
+        return off
+
+    # -- built-ins (SPEC §(b)) ----------------------------------------------
+
+    def _eval_function_call(self, expr: FunctionCall) -> Value:
+        self._steps += 1  # function call = 1 step (SPEC §(g))
+        name = expr.name.lower()
+        if name in _BUILTIN_IMPL:
+            return _BUILTIN_IMPL[name](self, expr)
+        sub = self._subprocesos.get(expr.name)
+        if sub is None or not sub.is_function:
+            raise self._err("ERR_TYPE", f"función no definida: {expr.name}", expr)
+        v = self._call_subproceso(sub, expr.args, expr)
+        assert v is not None
+        return v
+
+    def _builtin_azar(self, expr: FunctionCall) -> Value:
+        n = self._builtin_int_arg(expr, 0)
+        return Value(self._rng.randrange(n), ENTERO)
+
+    def _builtin_rc(self, expr: FunctionCall) -> Value:
+        self._builtin_int_arg(expr, 0)  # n is ignored; alphabet is fixed
+        return Value(_RC_ALPHABET[self._rng.randrange(len(_RC_ALPHABET))], CARACTER)
+
+    def _builtin_abs(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(abs(v.value), v.type)
+
+    def _builtin_ln(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(math.log(v.value), REAL)
+
+    def _builtin_exp(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(math.exp(v.value), REAL)
+
+    def _builtin_sen(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(math.sin(v.value), REAL)
+
+    def _builtin_cos(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(math.cos(v.value), REAL)
+
+    def _builtin_atan(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(math.atan(v.value), REAL)
+
+    def _builtin_trunc(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        return Value(int(v.value), ENTERO)
+
+    def _builtin_redon(self, expr: FunctionCall) -> Value:
+        v = self._builtin_num_arg(expr, 0)
+        x = v.value
+        rounded = math.floor(x + 0.5) if x >= 0 else math.ceil(x - 0.5)
+        return Value(int(rounded), ENTERO)
+
+    def _builtin_largo(self, expr: FunctionCall) -> Value:
+        v = self._builtin_str_arg(expr, 0)
+        return Value(len(v.value), ENTERO)
+
+    def _builtin_subcadena(self, expr: FunctionCall) -> Value:
+        s = self._builtin_str_arg(expr, 0)
+        i = self._builtin_int_arg(expr, 1)
+        j = self._builtin_int_arg(expr, 2)
+        # 1-indexed, inclusive (official PseInt semantics).
+        return Value(s.value[i - 1 : j], CADENA)
+
+    def _builtin_concatenar(self, expr: FunctionCall) -> Value:
+        a = self._builtin_str_arg(expr, 0)
+        b = self._builtin_str_arg(expr, 1)
+        return Value(a.value + b.value, CADENA)
+
+    def _builtin_mayusculares(self, expr: FunctionCall) -> Value:
+        v = self._builtin_str_arg(expr, 0)
+        return Value(v.value.upper(), CADENA)
+
+    def _builtin_minusculas(self, expr: FunctionCall) -> Value:
+        v = self._builtin_str_arg(expr, 0)
+        return Value(v.value.lower(), CADENA)
+
+    def _builtin_fecha_actual(self, expr: FunctionCall) -> Value:
+        return Value(_FECHA_ACTUAL, CADENA)
+
+    def _builtin_hora_actual(self, expr: FunctionCall) -> Value:
+        return Value(_HORA_ACTUAL, CADENA)
+
+    def _builtin_int_arg(self, expr: FunctionCall, idx: int) -> int:
+        if idx >= len(expr.args):
+            raise self._err("ERR_TYPE", "faltan argumentos", expr)
+        v = self._eval_expr(expr.args[idx])
+        if v.type != ENTERO:
+            raise self._err("ERR_TYPE", "el argumento debe ser Entero", expr)
+        return v.value
+
+    def _builtin_num_arg(self, expr: FunctionCall, idx: int) -> Value:
+        if idx >= len(expr.args):
+            raise self._err("ERR_TYPE", "faltan argumentos", expr)
+        v = self._eval_expr(expr.args[idx])
+        if v.type not in (ENTERO, REAL):
+            raise self._err("ERR_TYPE", "el argumento debe ser numérico", expr)
+        return v
+
+    def _builtin_str_arg(self, expr: FunctionCall, idx: int) -> Value:
+        if idx >= len(expr.args):
+            raise self._err("ERR_TYPE", "faltan argumentos", expr)
+        v = self._eval_expr(expr.args[idx])
+        if v.type not in (CADENA, CARACTER):
+            raise self._err("ERR_TYPE", "el argumento debe ser Cadena", expr)
+        return v
+
     # -- conditions ---------------------------------------------------------
 
     def _eval_condition(self, expr: object) -> bool:
@@ -427,11 +791,11 @@ class Evaluator:
         if isinstance(expr, BinaryOp):
             return self._eval_binary(expr)
         if isinstance(expr, FunctionCall):
-            raise self._err(
-                "ERR_TYPE", f"función no implementada (todo 6): {expr.name}", expr
-            )
-        if isinstance(expr, (ArrayIndex, ArrayLiteral)):
-            raise self._err("ERR_DIM", "arrays no implementados (todo 6)", expr)
+            return self._eval_function_call(expr)
+        if isinstance(expr, ArrayIndex):
+            return self._eval_array_index(expr)
+        if isinstance(expr, ArrayLiteral):
+            return self._eval_array_literal(expr)
         raise self._err(
             "ERR_TYPE", f"expresión no soportada: {type(expr).__name__}", expr
         )
@@ -643,6 +1007,28 @@ def _is_numeric(v: Value) -> bool:
 
 def _num_type(a: str, b: str) -> str:
     return REAL if a == REAL or b == REAL else ENTERO
+
+
+# SPEC §(b) built-in dispatch: lowercase name -> evaluator method.
+_BUILTIN_IMPL = {
+    "azar": Evaluator._builtin_azar,
+    "rc": Evaluator._builtin_rc,
+    "abs": Evaluator._builtin_abs,
+    "ln": Evaluator._builtin_ln,
+    "exp": Evaluator._builtin_exp,
+    "sen": Evaluator._builtin_sen,
+    "cos": Evaluator._builtin_cos,
+    "atan": Evaluator._builtin_atan,
+    "trunc": Evaluator._builtin_trunc,
+    "redon": Evaluator._builtin_redon,
+    "largo": Evaluator._builtin_largo,
+    "subcadena": Evaluator._builtin_subcadena,
+    "concatenar": Evaluator._builtin_concatenar,
+    "mayusculares": Evaluator._builtin_mayusculares,
+    "minusculas": Evaluator._builtin_minusculas,
+    "fechaactual": Evaluator._builtin_fecha_actual,
+    "horaactual": Evaluator._builtin_hora_actual,
+}
 
 
 def evaluate(program: Program, input_text: str = "", seed: int = 0) -> EvalResult:
