@@ -59,3 +59,20 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **Negative MOD**: Python `%` semantics (sign follows divisor) — `-7 MOD 3` = 2, `7 MOD -3` = -2, `-7 MOD -3` = -1. Matches SPEC section (c) (MOD truncates reals first, then Python `%`).
 - **Output cap fires after append**: ERR_OUTPUT_CAP raises after the offending Escribir completes, so partial output is present. Confirmed in the edge matrix.
 - **Step budget fires on strictly-greater**: `_check_step_budget` raises when `steps > budget`. Infinite Mientras with budget=1000 terminates by design.
+
+## Todo 10 — submission runner (2026-09-05)
+
+- **Subprocess contract is the seam**: `[sys.executable, "-m", "pseint_engine.cli", "run", ...]` — sys.executable is the venv python, so no PATH dependency; the judge never imports the engine for execution (only `parse`/`LexError`/`ParseError` for the CE path). This keeps the worker/sandbox wrapper (todo 34) able to swap the engine for a containerized one later.
+- **cpu_ms via RUSAGE_CHILDREN delta**: `resource.getrusage(RUSAGE_CHILDREN)` before/after `subprocess.run` gives the child's user+sys CPU time — simplest reliable approach on Linux; fine for the single-threaded-per-submission worker.
+- **Source temp file written ONCE, reused for N cases**: parse-once/run-N means one `.psc` NamedTemporaryFile for the whole submission, per-case `.txt` input + `.json` report files, all unlinked in `finally`.
+- **Missing/corrupt report degrades to ERR_INTERNAL**: a hard engine crash (segfault/OOM) leaves no report JSON; guard with try/except around json.load → synthetic error record instead of raising.
+- **`10 / n` with Entero n → "5.0"**: engine true-division rule (todo 5) bit the practice-mode test — expected "5\n", got "5.0\n". Test fixed, not the runner.
+- **Bootstrap scaffolded a partial judge/**: pyproject had a `pseint-engine` dependency + stale `src/__init__.py`; removed the dep (subprocess contract instead) and deleted the stale file before the real package landed.
+- **Engine dep declared in judge pyproject (plan todo-1 spec)**: the runner imports `pseint_engine.lexer`/`parser` directly for the CE path, so `dependencies = ["pseint-engine"]` is required — fresh installs pull pseint-engine (todo-34 Docker image build would otherwise ImportError).
+
+## Todo 11 — output comparison (2026-09-05)
+
+- **Trailing-newline semantics fall out of `split("\n")` naturally**: `"5\n".split("\n")` → `["5", ""]` vs `"5".split("\n")` → `["5"]` — the extra empty element IS the diff (first_diff_line=2, both sides report `""`). No special-casing needed; the MUST-NOT-trim rule is just "don't drop the trailing empty element".
+- **Missing-side convention**: when one side is longer, the missing side reports `""` for expected_line/got_line (not None) — keeps the return dict JSON-serializable for the API layer (todo 12+).
+- **Token mode is whole-text `split()`, not per-line**: `"1  2\n3\n".split()` → `["1","2","3"]` equals `"1 2 3\n".split()` — newlines are just whitespace. Per-line token splitting would fail this pinned case.
+- **first_diff_line doubles as token index in token mode**: same field name, 1-based index into the token sequence (plan says "first_diff_token" but the dict key stays `first_diff_line` per the todo-11 contract).

@@ -1,0 +1,70 @@
+# Evidence — Todo 11: Implement output comparison
+
+**Date:** 2026-09-05
+**Plan ref:** `.omo/plans/pseint-judge.md` lines 197-203
+**Spec ref:** `spec/SPEC.md` §(j) Comparison Contract (NORMATIVE)
+**Draft ref:** `.omo/drafts/pseint-judge.md` M5 (trailing newline is part of output)
+
+## Deliverables
+
+- `judge/src/pseint_judge/compare.py` — `compare_outputs(expected: str, got: str, mode: str = "exact") -> dict`
+- `judge/tests/test_compare.py` — 10-case TDD suite
+
+## Module design
+
+`compare_outputs` returns `{equal: bool, first_diff_line: int | None, expected_line: str | None, got_line: str | None}`.
+
+- **exact mode** (default): `_normalize_lines` = `text.split("\n")` → per line `replace("\r", "")` then `rstrip()` → element-wise compare. Trailing blank elements from a final `\n` are PRESERVED (never trimmed).
+- **token mode**: `expected.split()` / `got.split()` (whitespace `\s+` collapse) → token-sequence compare.
+- **first_diff_line**: 1-based line index (exact) or 1-based token index (token). When one side is longer, the first extra element is the diff and the missing side reports `""`.
+- Equal → `first_diff_line=None`, `expected_line=None`, `got_line=None`.
+
+## Exact-mode semantics (SPEC §(j), normative)
+
+1. Split on `\n`.
+2. Strip `\r` from each line (CRLF normalisation).
+3. `rstrip()` each line (trailing spaces/tabs removed).
+4. Compare line-by-line.
+5. Leading whitespace SIGNIFICANT (not stripped).
+6. Blank lines SIGNIFICANT (empty line must match empty line).
+7. Trailing `\n` from the last `Escribir` is PART of the output — the trailing empty split element is kept (draft M5; plan §11 MUST NOT trim).
+
+## Token-mode semantics
+
+- Whole text split on `\s+` (runs of any whitespace collapse; newlines are whitespace).
+- Token sequences compared element-wise; `first_diff_line` = 1-based token index of first mismatch.
+
+## QA scenarios (plan §11, both asserted)
+
+- happy: exact-match golden passes → `test_exact_match_passes`.
+- failure: expected `"5\n"` vs got `"5"` → NOT equal, `first_diff_line == 2`, `expected_line == ""`, `got_line == ""` → `test_trailing_newline_is_significant`.
+
+## Test coverage (10 cases)
+
+1. exact match passes
+2. expected `"5\n"` got `"5"` → not equal (trailing newline is part of output)
+3. CRLF: `"a\nb\n"` vs `"a\r\nb\r\n"` → equal (strip \r)
+4. trailing spaces: `"a  \nb\n"` vs `"a\nb\n"` → equal (rstrip)
+5. leading whitespace significant: `"  a\n"` vs `"a\n"` → NOT equal
+6. blank line significant: `"a\n\nb\n"` vs `"a\nb\n"` → NOT equal (diff at line 2)
+7. token mode: `"1  2\n3\n"` vs `"1 2 3\n"` → equal
+8. token mode mismatch: `"1 2 3\n"` vs `"1 2 4\n"` → not equal, first_diff_line == 3
+9. multi-line diff: `"a\nb\nc\n"` vs `"x\nb\nc\n"` → first_diff_line == 1
+10. empty expected vs non-empty got → not equal
+
+## Verification results
+
+```
+$ ../.venv/bin/python -m pytest tests/test_compare.py -q
+10 passed in 0.66s
+
+$ ../.venv/bin/python -m pytest tests/ -q          # full judge suite (regression)
+20 passed in 8.15s
+
+$ ../.venv/bin/ruff check src
+All checks passed!
+```
+
+## Commit
+
+`feat(judge): output comparison` — hash: `ad8fd9a`

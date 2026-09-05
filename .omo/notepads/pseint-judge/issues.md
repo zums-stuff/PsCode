@@ -36,3 +36,12 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **No engine bugs found**: 200+200 hypothesis property examples and the full edge matrix all passed with zero crashes. No engine modifications were required.
 - **Hypothesis deadline**: the expression property test runs ~98-150ms/example (well under the 200ms default deadline). The array-access property test runs ~2-4ms/example. Both pass the default deadline.
 - **`-rs` flag hangs the run**: running pytest with `-rs` on the hardening suite exceeded the 180s timeout (hypothesis re-runs examples for reporting). Use plain `-q` for the hardening suite.
+
+## Todo 10 — submission runner (2026-09-05)
+
+- **Bootstrap commit left a partial judge/ package**: `judge/pyproject.toml` declared a `pseint-engine` dependency and `judge/src/__init__.py` was a stale empty module. Cleaned up in the todo-10 commit (dep removed — the engine is consumed via CLI subprocess, not import; stale file deleted). Not a bug, but worth knowing the scaffold wasn't final.
+- **Real division output**: `10 / 2` prints `5.0` (Entero/Entero → Real via true division). Any test asserting integer-looking division output must expect the `.0` suffix.
+
+## Todo 11 — output comparison (2026-09-05)
+
+- **No issues found**: all 10 comparison tests passed on first green run; ruff clean. The SPEC §(j) contract was unambiguous enough that no interpretation questions arose (M5 already pinned the trailing-newline rule).
