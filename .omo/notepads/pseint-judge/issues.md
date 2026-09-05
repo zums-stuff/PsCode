@@ -53,3 +53,8 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 ## Todo 13 — complexity bands (2026-09-05)
 
 - **No issues found**: all 21 complexity tests passed on first green run after the red phase; ruff clean. The SPEC §(k) coefficient table + band thresholds + hard-budget formula were unambiguous; no interpretation questions arose.
+
+## Todo 14 — scoring engines + scoreboard (2026-09-05)
+
+- **Assignment best detail placement**: initially put best_ac_cases/best_steps/best_submission_id on the row; tests expected them per-problem. Resolved by keeping them on `ProblemResult` (assignment is per-problem) and accessing via `row.problems[pid]` — the row only carries the aggregate `total_ac_cases`.
+- **Test-file ruff violations**: the new test file initially had an unsorted import block (scoreboard vs scoring) and a >88-col line; fixed both so `ruff check src tests/test_scoring.py` is clean (repo convention keeps tests linted too, even though tests aren't strictly gated).

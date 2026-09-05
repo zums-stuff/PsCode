@@ -91,3 +91,13 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **"other" complexity → ValueError**: no auto formula; the caller must supply `problem.step_budget`. Raising (vs returning None) makes the contract explicit and testable with `pytest.raises`.
 - **Band is a pure function of (steps, expected)**: `band()` needs no problem context — keeps complexity.py independent of verdicts.py (todo 14 wires them together). The planted bubble-vs-merge test proves the same step count lands in different bands depending on the expected complexity.
 - **n_estimate is just `len(input_text.split())`**: whitespace-token count, empty → 0. Trivial but pinned by SPEC §k.
+
+## Todo 14 — scoring engines + scoreboard (2026-09-05)
+
+- **Scoreboard carries its full submission set** so recompute is ALWAYS possible: `apply_submission(prev, new)` = `compute_scoreboard(prev.submissions + [new], ...)`. This satisfies "no frozen scoreboards" trivially and keeps the incremental hook correct without caching.
+- **Competition ranking (1,1,3)** is the stable same-score convention: equal keys share a rank, next rank skips. Implemented via `dataclasses.replace(row, rank=...)` since rows are frozen.
+- **CF wrong-attempt exclusions are all in one predicate**: non-AC AND not-retry AND submitted_at >= start_at AND submitted_at < first_ac. The `retry` flag on `Submission` marks infra retries (excluded from wrong attempts).
+- **Whole-minutes penalty** = `max(0, int((t - start_at).total_seconds() // 60))` — floored, never negative.
+- **Teams = roster-driven participant set**: when a `roster` is passed, participants are the roster's teams and only locked-roster members' submissions count. This enforces the roster-lock edge (no mid-contest edits) by construction.
+- **Assignment best is per-problem**: the best submission detail (best_ac_cases/best_steps/best_submission_id) lives on `ProblemResult`, not the row — tests access via `row.problems[pid]`.
+- **Mode is explicit, never inferred**: `compute_scoreboard(subs, mode=...)` raises `ValueError` on unknown mode; `cf` requires `start_at`, `assignment` requires `deadline`.

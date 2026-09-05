@@ -1,0 +1,42 @@
+# Task 14 — Scoring engines + scoreboard — Evidence
+
+**Date:** 2026-09-05
+**Plan todo:** 14 (plan lines 221-227)
+**Commit:** feat(judge): scoring and scoreboard — `25e5a8d`
+
+## Files
+- `judge/src/pseint_judge/scoring.py` — pure scoring functions (no DB)
+- `judge/src/pseint_judge/scoreboard.py` — incremental recompute + nightly reconcile hook (M12)
+- `judge/tests/test_scoring.py` — 21 tests (12 acceptance scenarios + edge cases)
+
+## Mode semantics (never mixed — mode passed explicitly, never inferred)
+- **cf**: problem solved iff ANY submission AC; penalty = sum(AC_time_min) + 20 x wrong attempts on SOLVED problems; rank solves desc, penalty asc.
+- **ioi**: points per problem = MAX points across that participant's submissions; total = sum; rank points desc.
+- **assignment**: best submission per problem (max AC cases, tie-break min steps); resubmissions allowed until deadline.
+
+## Pinned edges (plan §14, normative)
+- **Penalty minutes**: whole (floored) minutes since contest `start_at`; never negative (`max(0, delta//60)`).
+- **Wrong-attempt exclusions**: attempts before `start_at`, attempts after a problem's first AC, and infra retries (`Submission.retry=True`) are all EXCLUDED from the wrong-attempt count.
+- **Roster lock**: when a `roster` is supplied (teams enabled), participants are the roster's teams; only locked-roster members' submissions count (members not in the roster are ignored — no mid-contest edits honoured).
+- **Teams CF**: solve_time = first AC by ANY member; wrong attempts = union of team attempts (all team submissions on the problem before first AC).
+- **Teams IOI**: points = max over members (per problem, max across all team submissions).
+- **Same-score ranks STABLE**: competition ranking (1,1,3) — equal scores share the same rank number, next rank skips.
+
+## Recompute triggers (scoreboard.py, documented per mode)
+- **cf**: AC flip — a submission becoming AC changes solved-state.
+- **ioi**: per-case point delta — a submission changing points.
+- **assignment**: best-rating change — a submission beating the current best (more AC cases, or equal cases with fewer steps).
+- `apply_submission(prev, submission, ...)` recomputes from scratch over `prev.submissions + [submission]` — recompute is ALWAYS possible (nothing frozen; the Scoreboard carries its full submission set).
+- `reconcile(submissions, ...)` = nightly batch hook (M12): full recompute from ALL submissions, independent of any previous scoreboard.
+
+## Acceptance verification
+- `cd judge && python -m pytest tests/test_scoring.py -q` → **21 passed** (CF penalty arithmetic, teams CF/IOI, IOI max-points, assignment best, tie-breaks CF solves desc/penalty asc + IOI points desc, same-score ranks stable, IOI partial-update where a later WA moves the IOI row while CF solved-state stays unchanged, scoreboard recompute + reconcile, mode-is-explicit).
+- Full judge suite: `cd judge && python -m pytest tests/ -q` → **75 passed** (no regressions).
+- `cd judge && ruff check src` → **All checks passed!** (also clean on tests/test_scoring.py).
+
+## Design notes
+- `Submission` dataclass: {id, user_id, problem_id, submitted_at, verdict, points, ac_cases, steps, team_id, retry}. `verdict` is the overall verdict (AC/WA/TLE/RE/CE); `points` carries IOI per-case points; `ac_cases`/`steps` drive assignment best; `retry` marks infra retries.
+- Per-problem detail lives in `ProblemResult` (solved/solve_time_min/wrong_attempts for CF; points for IOI; best_ac_cases/best_steps/best_submission_id for assignment).
+- `Scoreboard` carries `rows` (ordered by rank), `submissions` (full set for recompute), and `by_participant()` lookup.
+- Assignment ranking: total_ac_cases desc (competition ranking) — a reasonable default; not pinned by acceptance tests.
+- API/DB layer (todo 18+) persists submissions and calls these pure functions; no DB here.
