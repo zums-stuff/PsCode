@@ -5,14 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pseint-judge"
 version = "0.1.0"
-description = "Verdict logic for PseInt online judge"
+description = "Judge module for pseint-judge: verdict classification and submission runner"
 requires-python = ">=3.11"
-dependencies = [
-    "pseint-engine",
-]
 
 [project.optional-dependencies]
-dev = ["pytest", "hypothesis", "ruff"]
+dev = ["pytest", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
