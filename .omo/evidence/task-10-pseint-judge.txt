@@ -1,0 +1,89 @@
+# Task 10 — Submission runner (parse-once, run-N)
+
+**Date:** 2026-09-05
+**Todo:** 10 of .omo/plans/pseint-judge.md (lines 189-195)
+**Commit:** 83ca689 (feat(judge): submission runner)
+
+## Package setup
+
+- `judge/pyproject.toml` — mirrors engine/pyproject.toml: name `pseint-judge`,
+  src layout (`[tool.setuptools.packages.find] where = ["src"]`),
+  requires-python >=3.11, dev extras `pytest` + `ruff`, ruff line-length 88,
+  select E/F/I/N/W/UP. No `pseint-engine` dependency: the engine is consumed
+  exclusively via its CLI subprocess contract (todo 7), never imported for
+  execution (only `parse`/`LexError`/`ParseError` are imported for the CE path).
+- `judge/src/pseint_judge/__init__.py` — package docstring.
+- `judge/src/pseint_judge/runner.py` — the runner (below).
+- Installed editable into the venv: `../.venv/bin/pip install -e .` →
+  `Successfully installed pseint-judge-0.1.0`.
+
+## Runner design
+
+`judge_submission(source, problem, test_cases, mode) -> SubmissionResult`
+
+- **Parse ONCE (M1)**: `pseint_engine.parser.parse(source)` runs first. On
+  `LexError`/`ParseError` → `SubmissionResult(verdict="CE", error={code:"CE",
+  message, line, col})` with `cases == []`. ZERO test cases run, ZERO
+  subprocesses spawned (proven by the spy test below).
+- **Per-case subprocess**: `[sys.executable, "-m", "pseint_engine.cli", "run",
+  source_path, "--input", input_path, "--seed", seed, "--report", report_path]`
+  plus `--step-budget` (only when set), `--max-output-bytes` (default 1MB,
+  matching the CLI default M13), `--max-array-elements` (only when set).
+  - Source written ONCE to a `tempfile.NamedTemporaryFile` (`.psc` suffix),
+    reused for all N cases, unlinked in `finally`.
+  - Input written per case to a `.txt` temp file; report JSON to a `.json`
+    temp file (mkstemp); both unlinked in `finally`.
+  - `sys.executable` = the venv python → no PATH dependency.
+  - Timing: `wall_ms` = `time.monotonic()` delta around `subprocess.run`;
+    `cpu_ms` = `resource.getrusage(RUSAGE_CHILDREN)` user+sys delta (simplest
+    reliable approach on Linux; single-threaded worker per submission).
+  - Report read back as JSON; a missing/corrupt report (hard crash) degrades
+    to a synthetic `ERR_INTERNAL` error record instead of raising.
+- **Provisional verdicts** (error-based only; full taxonomy is todo 12):
+  no error → `"OK"`; `ERR_STEP_LIMIT` → `"TLE"`; any other error → `"RE"`.
+  Per-case record: `{verdict, steps, wall_ms, cpu_ms, output, error}`.
+- **Lazy rules (M2)**: `"cf"` breaks after the first non-OK case; `"ioi"` and
+  `"assignment"` run all cases; `"practice"` is a single run with
+  `problem["input"]`, no grading (`cases == []`, output at top level).
+- **Overall provisional verdict**: `"OK"` if all cases OK, else the first
+  non-OK verdict (scoring/classification refined in todos 12/14).
+- Unknown mode → `ValueError`.
+
+## Acceptance evidence
+
+`cd judge && ../.venv/bin/python -m pytest tests/test_runner.py -q` →
+**10 passed in 4.70s**
+
+1. `test_ce_short_circuits_with_zero_subprocesses` — CE source (unterminated
+   string) → verdict CE, `cases == []`, error line 2; `_run_case` monkeypatched
+   with a recorder spy → **zero calls** (M1 proven: no subprocess spawned).
+2. `test_cf_mode_stops_at_first_non_ok` — 3-case div problem, 2nd case div0 →
+   **2 results** `["OK", "RE"]`, overall RE (M2 CF lazy-stop).
+3. `test_ioi_mode_runs_all_cases` — same problem → **3 results** (M2 run-all).
+4. `test_assignment_mode_runs_all_cases` — **3 results** (M2 run-all).
+5. `test_practice_mode_single_run_no_grading` — `{"input": "2\n"}` → verdict
+   OK, `cases == []`, output `"5.0\n"` (10/2 → Real via true division).
+6. `test_per_case_seeding_is_visible` — AZAR(100) program, seeds 0 and 1 →
+   outputs `"49\n"` and `"17\n"` (different; pinned sequences from todo 6).
+7. `test_happy_path_all_ok_with_timing` — sum program, 2 cases → all OK,
+   `steps > 0`, `wall_ms > 0`, `cpu_ms > 0`, outputs `"5\n"`/`"30\n"`.
+8. `test_engine_re_div0_maps_to_re_with_error_code` — div0 → verdict RE,
+   `error["code"] == "ERR_DIV0"`.
+9. `test_step_limit_maps_to_tle` — infinite Mientras + step_budget 1000 →
+   verdict TLE, `error["code"] == "ERR_STEP_LIMIT"`.
+10. `test_unknown_mode_raises_value_error`.
+
+`cd judge && ../.venv/bin/ruff check src` → **All checks passed!**
+
+## Notes
+
+- `10 / n` with `n` Entero yields a Real (`5.0`) — engine true-division rule
+  (todo 5 learning); the practice test asserts `"5.0\n"`.
+- The bootstrap commit had scaffolded a partial `judge/` (pyproject with a
+  `pseint-engine` dependency + stale `src/__init__.py`); cleaned up: dependency
+  removed (subprocess contract instead), stale file deleted.
+- Engine files untouched (MUST NOT DO respected).
+
+## Commit
+
+`feat(judge): submission runner` — 83ca689.
