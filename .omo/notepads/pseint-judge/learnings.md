@@ -40,3 +40,13 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **CLI defaults ≠ evaluator defaults**: evaluator `output_cap`/`step_budget` default None (preserve behavior); CLI `--max-output-bytes` defaults 1_048_576 (M13 1MB) and passes it through. The distinction keeps the 448-test invariant while the CLI enforces the sandbox cap.
 - **BrokenPipeError pattern**: CLI writing raw program output to stdout needs the Python-docs devnull-dup2 handler in `main` — piping to `head`/closed pipe otherwise dumps a traceback.
 - **Editable install picks up new modules** (`.pth`-based): `python -m pseint_engine.cli` works in subprocess tests without reinstall; `pip install -e .` regenerates the `pseint-engine` console script.
+
+## Todo 8 — golden corpus + harness (2026-09-05)
+
+- **Corpus generation approach**: wrote a throwaway generator script that emits all .psc files, runs each through `evaluate()`, and writes .out/.json from the engine result — then hand-verified every expected value against SPEC semantics (outputs, error codes, step counts). Step counts were cross-checked by manual trace for the small programs; all matched.
+- **Mientras statement costs 1 step on top of condition evals**: `Mientras i < 3` with 3 iterations = 1 (stmt) + 3×(2 cond + 2 Escribir + 2 assign) + 2 final cond = 22 steps. The statement step is easy to forget when hand-tracing.
+- **Para step model confirmed**: entry = 1 (statement) + per-iteration = 1 (check) + body + 1 (increment) + final failing check = 1. `Para i <- 1 Hasta 4` = 18 steps.
+- **ERR_OUTPUT_CAP fires AFTER the offending Escribir completes**: the output append happens first, then the cap check raises — so the .out for neg_output_cap contains the full 10 lines (110 bytes > 100 cap) and the 10th iteration only costs 4 steps (cond 2 + Escribir stmt+arg 2), not 6.
+- **ERR_STEP_LIMIT fires on strictly-greater**: `_check_step_budget` raises when `steps > budget`, so a budget of 5 fires at step 6 (during the BinaryOp eval of `i <- i + 1`, not at the statement boundary).
+- **Corpus harness pattern**: pytest parametrize over sorted case names + a separate coverage-count test that prints per-category counts and asserts minimums (>=25 total, >=5 negative). Per-case kwargs dict for negative cases needing step_budget/output_cap.
+- **Byte-exactness QA is cheap**: one `printf 'mayor \n' > si_basico.out` + pytest run proves the harness catches trailing-space mutations with a visible diff.
