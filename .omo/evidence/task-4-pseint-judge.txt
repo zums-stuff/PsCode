@@ -1,0 +1,98 @@
+TASK 4 EVIDENCE — parser + AST
+==============================
+Date: 2026-09-05
+Plan: .omo/plans/pseint-judge.md (lines 140-146)
+Files:
+  - engine/src/pseint_engine/ast_nodes.py  (new)
+  - engine/src/pseint_engine/parser.py     (new)
+  - engine/tests/test_parser.py            (new)
+
+TEST RESULTS
+------------
+  pytest tests/test_parser.py -q  ->  95 passed
+  pytest tests/ (full suite)      ->  272 passed (177 lexer + 95 parser)
+  ruff check src                  ->  All checks passed
+
+PER-STATEMENT-KIND COVERAGE (test_parser.py)
+--------------------------------------------
+  Program structure:      minimal, params, typed params, Por Referencia
+  Declarations:           Definir (colon / Como / comma-list / bare / init),
+                          Dimension (1-D, multi-D), Dimensionar, Redimensionar
+  Assignment:             simple, expression RHS
+  Leer:                   single, multiple
+  Escribir:               single, multiple, Sin Saltar, lowercase sin saltar,
+                          variable named "Sin" (not modifier)
+  Si/FinSi:               simple, SiNo else, Sino synonym, nested Si in else
+  Segun/FinSegun:         integer cases, De Otro Modo default, Otherwise
+  Mientras/FinMientras:   simple
+  Repetir/Hasta Que:      simple
+  Para/FinPara:           simple, Con Paso, With step
+  HACER...MIENTRAS QUE:   simple, with nested Mientras loop inside block
+  Esperar:                bare, Milisegundos, Milisegundo (singular)
+  Limpiar Pantalla:       simple
+  SubProceso:             with params, no params
+  Funcion:                with return type + Retornar
+  Retornar:               expression
+  SubProcCall:            with args, no args, empty parens
+
+FLEXIBLE-VARIANT COVERAGE
+-------------------------
+  Dimensionar (synonym of Dimension)          -> test_dimensionar_flexible
+  De Otro Modo / Otherwise (Segun default)    -> test_segun_de_otro_modo,
+                                                 test_segun_otherwise
+  Sin Saltar suffix on Escribir               -> test_escribir_sin_saltar,
+                                                 test_escribir_sin_saltar_lowercase
+  Con Paso / With step on Para                -> test_para_con_paso,
+                                                 test_para_with_step
+  SiNo / Sino synonym                         -> test_si_sino, test_si_sino_synonym
+  HACER...MIENTRAS QUE                        -> test_hacer_mientras_que
+  Milisegundo singular                        -> test_esperar_milisegundo_singular
+  == equality alias                           -> test_equality_alias_eqeq
+  Definir a, b Como Entero (comma list + Como)-> test_definir_comma_list_como
+  Para i <- 1 (ASSIGN) and Para i = 1 (EQ)    -> both accepted
+
+EXPRESSION COVERAGE
+-------------------
+  Integer/Real/String/Boolean literals, identifiers, binary ops with
+  precedence (| < & < relational < additive < multiplicative < unary <
+  power right-assoc), unary + - ~, parens, function calls (incl. built-in
+  keyword names abs/azar/subcadena), array indexing, array literals,
+  relational ops (< > = == <> <= >=), modulo (% and MOD keyword).
+
+NESTED PERMUTATIONS
+-------------------
+  Si inside Mientras, Mientras inside Para, Segun inside Si,
+  deep nesting (Para > Mientras > Si > Repetir), Si inside Si else.
+
+ERROR-POSITION TESTS (line 1-based, col 0-based)
+------------------------------------------------
+  Missing FinSi        -> CE at opening Si (2,0)
+  Missing FinMientras  -> CE at opening Mientras (2,0)
+  Missing FinPara      -> CE at opening Para (2,0)
+  Missing FinSegun     -> CE at opening Segun (2,0)
+  Missing FinSubProceso-> CE at opening SubProceso (2,0)
+  Missing FinProceso   -> CE at opening Proceso (1,0)
+  Unexpected token     -> CE at offending token
+  Reserved word as assignment target (Si <- 5) -> CE at keyword (2,0)
+  Reserved word Mientras as target            -> CE
+  Reserved word as Proceso name               -> CE
+  Reserved word in Definir                    -> CE
+  Cycle limit (>1000 tokens in one statement) -> CE
+
+NOTES
+-----
+  - ParseError carries code="CE", message, line (1-based), col (0-based).
+  - Unterminated structures report the opening keyword's position.
+  - Built-in function names (abs, azar, subcadena, ...) are keyword tokens
+    from the lexer but are parsed as FunctionCall in expression position.
+  - Para accepts both '=' (SPEC EBNF) and '<-' (real PseInt); Definir init
+    accepts both too.
+  - 'Como' is an IDENTIFIER from the lexer; the parser treats it as the
+    type separator in Definir contextually.
+  - 'Mientras Que' is lexed as MIENTRAS + IDENTIFIER("Que"); the parser
+    recognizes the pair as the do-while tail, allowing nested Mientras loops
+    inside the HACER block.
+
+COMMIT
+------
+  43123cc feat(engine): parser and AST
