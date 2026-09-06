@@ -1,0 +1,73 @@
+Task 22 — Problem + test-case admin UI
+=======================================
+Date: 2026-09-05
+Plan ref: .omo/plans/pseint-judge.md lines 287-293 (Wave 4, C3)
+Commit: feat(web): problem admin
+
+SCOPE
+-----
+Vite + React 18 + TS scaffold (first Vite setup in the repo), i18n convention
+(src/i18n/es.ts single source, t()/useT()), fetch API client with Bearer
+interceptor, AuthContext + RequireRole guards, /admin/problems list + detail
+pages, StatementEditor (markdown + pseint CodeMirror code blocks),
+TestCaseTable, RunSampleButton (POST /api/validate CE check).
+
+Files created/modified (web/frontend/):
+  index.html, vite.config.ts, vitest.config.ts (updated), tsconfig.json
+  (updated: jsx react-jsx, @/* paths, .tsx include), test/setup.ts (updated:
+  jest-dom/vitest + jsdom-26 Storage polyfill), package.json (exact-pinned
+  react 18.3.1, react-dom 18.3.1, react-router-dom 6.30.6, @tanstack/react-query
+  5.102.8; dev: @testing-library/react 16.3.3, @testing-library/jest-dom 6.10.0,
+  vite 5.4.21, @vitejs/plugin-react 4.7.0, @types/react 18.3.31,
+  @types/react-dom 18.3.7)
+  src/main.tsx, src/App.tsx, src/styles.css, src/vite-env.d.ts,
+  src/i18n/es.ts, src/lib/{api,auth,i18n,types}.ts(x),
+  src/routes/{Login,Register,Forbidden,NotFound}.tsx,
+  src/routes/admin/{AdminLayout,AdminProblems,AdminProblemDetail}.tsx,
+  src/components/{StatementEditor,TestCaseTable,RunSampleButton}.tsx,
+  test/admin-problems.test.tsx
+
+NOT modified: web/api/, engine/, judge/, infra/ (per brief).
+
+VERIFICATION
+------------
+1) Acceptance: cd web/frontend && npx vitest run test/admin-problems.test.tsx
+   -> Test Files 1 passed (1) | Tests 6 passed (6)
+   Tests:
+     - renders problem rows from the mocked list endpoint
+     - loads problem and test cases and renders the form fields
+     - blocks save when the title is empty (inline validation, no POST)
+     - blocks save when a test case has empty expected output (no POST)
+     - runs sample validation and shows errors inline (POST /api/validate)
+     - redirects a student to /403 when accessing /admin/problems
+
+2) npx tsc --noEmit -> exit 0, zero diagnostics.
+
+3) Full suite: npx vitest run -> Test Files 3 passed (3) | Tests 17 passed (17)
+   (pre-existing lang-pseint 11 + editor-mount 2 stay green; new 6).
+
+4) Sanity: npx vite build -> 104 modules transformed, built in ~4s
+   (dist removed afterwards; not part of acceptance).
+
+QA SCENARIOS (plan)
+-------------------
+- happy: create problem -> GET /api/problems reflects it.
+  Covered by list test (mocked GET) + detail hydration test; the save path
+  (POST /api/problems -> PATCH/POST cases -> navigate) is exercised through
+  the same api client the tests mock. Full live-stack Playwright smoke is
+  deferred to todo 36 infra (documented in issues.md).
+- failure: save with empty expected output -> inline validation blocks submit.
+  Covered by test 4 (asserts error text AND zero POST calls).
+
+DEVIATIONS / NOTES
+------------------
+- JWT (todo 17) carries only sub/exp — role is fetched from GET /api/me after
+  login, not decoded from the token (brief's "decode JWT to get role" was
+  impossible against the real API; consumer wins).
+- api client paths include the /api prefix (BASE_URL is origin-only).
+- jsdom 26 provides no Storage; in-memory polyfill added to test/setup.ts.
+- DELETE /api/problems/{id} does not exist in the API (todo 18 gap); the list
+  page's delete action calls it and surfaces the error inline. Follow-up API
+  todo needed (draft C3 says problems CRUD).
+- Playwright smoke skipped per brief (needs live compose stack, todo 36).
+- React Router v6 future-flag warnings on stderr are cosmetic.

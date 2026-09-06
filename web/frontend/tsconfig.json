@@ -12,11 +12,20 @@
     "sourceMap": true,
     "outDir": "./dist",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"],
     "paths": {
-      "@codemirror/lang-pseint": ["./src/lang/index.ts"]
+      "@codemirror/lang-pseint": ["./src/lang/index.ts"],
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "vitest.config.ts",
+    "vite.config.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }
