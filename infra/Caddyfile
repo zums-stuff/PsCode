@@ -1,0 +1,96 @@
+# pseint-judge — Caddy reverse proxy (todo 36).
+#
+# LOCAL-FIRST: when DOMAIN is unset (the default), Caddy binds to plain
+# HTTP on :80 and serves everything from the static frontend + proxies
+# /api/* to the api container.  This is the LOCAL mode used for every
+# plan acceptance check (todo 36 + 37 + 40 + 42).
+#
+# When DOMAIN is set (e.g. "judge.example.unam.mx"), Caddy activates
+# auto-HTTPS via Let's Encrypt (ACME http-01 challenge on :80, real cert
+# served on :443).  Caddy handles cert renewal automatically.  This mode
+# is exercised only on the UNAM production host (post-plan, todo 40).
+#
+# Security headers are applied to ALL responses (LOCAL + production):
+#   * X-Frame-Options DENY          — clickjacking
+#   * X-Content-Type-Options nosniff — MIME sniffing
+#   * Referrer-Policy no-referrer   — privacy
+# The SPA frontend is a single-page app; no embedding context needed.
+#
+# CORS: cross-origin browser requests to /api/* are blocked unless
+# CORS_ALLOW_ORIGINS is set in the API's env (the API applies the
+# allowlist).  Caddy does NOT inject CORS headers — the API owns them.
+
+# ─── Site block ─────────────────────────────────────────────────────────────
+# ``{$DOMAIN}`` is the Caddy env-substituted domain (empty when DOMAIN is
+# unset in .env).  Caddy's site-address syntax accepts BOTH a hostname
+# (``example.com``) and a listen address (``:80``) — when DOMAIN is empty,
+# ``{$DOMAIN:...}`` falls back to its default.
+#
+# When DOMAIN is set, Caddy activates automatic HTTPS for that hostname.
+# When unset, the same block serves plain HTTP on :80 (default below).
+#
+# ``:80`` (NOT ``localhost``) as the default so the LOCAL smoke probe
+# (``curl http://localhost:80/healthz``) hits the right site even when
+# the request originates on a non-loopback interface (e.g. another
+# container in a multi-host compose swarm).
+{$DOMAIN::80} {
+    # Encode responses (gzip etc.) — cheap CPU win on the SPA.
+    encode zstd gzip
+
+    # Reverse-proxy the API.  The api service is on the compose internal
+    # network at api:8000 (uvicorn).  ``header_up`` strips the inbound
+    # Host so the API doesn't see the wrong virtual host; ``header_down``
+    # is left default so API-set headers (CORS) flow through unchanged.
+    reverse_proxy /api/* api:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        # Per-route health: a failed API is removed from the pool until it
+        # recovers (the API's own /healthz must return 200).
+        health_uri /healthz
+        health_interval 10s
+        health_timeout 5s
+    }
+
+    # Liveness + readiness probes — Caddy serves these directly from the
+    # API without rate limiting (the API's RateLimitMiddleware skips
+    # /healthz and /readyz prefixes).  Useful for ops dashboards.
+    reverse_proxy /healthz api:8000
+    reverse_proxy /readyz api:8000
+
+    # WebSocket endpoint for live submission results (todo 19).  The
+    # ``/ws/*`` path is matched first so the SPA's per-route fallback
+    # below doesn't intercept it.
+    reverse_proxy /ws/* api:8000 {
+        header_up Host {host}
+    }
+
+    # Static frontend — SPA mounted at /srv/frontend in the caddy
+    # container (volume from the frontend service).  ``file_server`` is
+    # the Caddy built-in static server with a sane default set of
+    # content-types and ETag/If-Modified-Since handling.
+    root * /srv/frontend
+    file_server
+
+    # SPA fallback: unknown paths return index.html so client-side
+    # routes (/problems, /problem/:id, /contest/:id, /submissions,
+    # /admin/*, etc.) work on hard reload.  ``try_files`` is the
+    # idiomatic Caddy 2 form for this.
+    @spa_fallback not path /api/* /ws/* /healthz /readyz
+    rewrite @spa_fallback /index.html
+
+    # Security headers — applied to every response (including /api/*).
+    header {
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        # HSTS would go here in production; intentionally omitted in the
+        # LOCAL-first block so a misconfigured DOMAIN can't brick dev.
+        -Server
+    }
+
+    # Access log — Caddy emits structured JSON to stdout; the compose
+    # stack captures it via the standard docker logs mechanism.
+    log
+}

@@ -1,0 +1,68 @@
+# syntax=docker/dockerfile:1.7
+# RQ worker image for pseint-judge (todo 36).
+#
+# Consumes run_ids from the ``runs`` RQ queue, runs each submission inside
+# the engine sandbox image (``infra/Dockerfile.worker``, todo 34) via
+# ``scripts/run_sandboxed.py``, persists results, broadcasts WebSocket
+# events, triggers scoreboard recompute (M12) and anticheat batches.
+#
+# This is SEPARATE from ``infra/Dockerfile.worker`` (the engine sandbox).
+# That image is the per-submission container; this one is the long-running
+# RQ pool that spawns those containers.  See todo 34 (sandbox) vs todo 35
+# (worker pool) in the plan.
+#
+# Hardening contract (matches plan §Admin / M9):
+#   * python:3.11-slim — small base
+#   * USER 65534:65534 — non-root
+#   * Mounted Docker socket (read/write) — this is the ONLY container that
+#     may spawn engine sandbox containers.  The API container NEVER gets
+#     the socket (see infra/docker-compose.yml).  See OPS.md (todo 40) for
+#     the threat model and the M9 mitigation (deploy-time bind-mount
+#     restriction to the socket's owning GID).
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+
+# Install everything the worker needs: engine (for parse() in the CE
+# short-circuit), judge (for judge_submission if used), api (for models,
+# db, ws, events), scripts (for run_sandboxed.py), and the worker module
+# itself.  rq + redis + uvicorn-style extras for completeness.
+COPY engine/ /app/engine/
+COPY judge/ /app/judge/
+COPY web/api/ /app/web/api/
+COPY scripts/ /app/scripts/
+COPY infra/worker/ /app/infra/worker/
+# ``infra`` itself needs to be importable as a package — Dockerfile.rqworker
+# copies the package directory but a bare COPY without the __init__.py will
+# not register the package.  Create an empty __init__.py at build time.
+RUN touch /app/infra/__init__.py
+
+RUN pip install --no-cache-dir \
+        /app/engine \
+        /app/judge \
+        /app/web/api \
+        "rq>=1.16" \
+        "redis>=5.0" \
+    && pip cache purge \
+    && rm -rf /app/engine /app/judge /app/web/api /root/.cache
+
+# infra.worker.worker is a script package, not an installed one — keep its
+# source in place so ``python -m infra.worker.worker`` resolves.
+
+# Non-root user (UID matches the engine sandbox + API images for shared
+# log inspection).  The Docker socket is mounted at runtime by compose.
+RUN useradd --create-home --uid 65534 pseint || true \
+    && mkdir -p /home/pseint \
+    && chown -R 65534:65534 /home/pseint /app
+USER 65534:65534
+
+WORKDIR /home/pseint
+
+CMD ["python", "-m", "infra.worker.worker"]

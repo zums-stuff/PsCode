@@ -13,3 +13,11 @@ build/
 # README in infra/seccomp/ documents the producer; this file is host-Docker
 # version-specific and must be re-exported on engine upgrades.
 infra/seccomp/default.json
+
+# Local env file for the compose stack — contains ADMIN_PASSWORD and
+# SECRET_KEY.  Only infra/.env.example is version-controlled (todo 36).
+infra/.env
+
+# Local stack override — uncomment to customize without editing the base
+# compose file.  Keep base compose prod-ready; override is optional.
+# infra/docker-compose.override.yml

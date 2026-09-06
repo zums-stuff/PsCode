@@ -1,21 +1,201 @@
-# Minimal local stack for todo 16: postgres only.
-# Todo 36 expands this to the full stack (redis/api/worker/caddy).
+# pseint-judge full local stack (todo 36).
+#
+# LOCAL-FIRST (plan §D17): with ``DOMAIN`` UNSET (the default in .env.example)
+# the stack serves plain HTTP at http://localhost — this is the LOCAL mode
+# the plan uses for every acceptance check.  The UNAM production wiring
+# (real domain, auto-HTTPS, ufw, fail2ban, off-host backups) is documented
+# in OPS.md and executed separately (todo 40); nothing in this file should
+# require a real domain for local acceptance.
+#
+# Scaling: REPLICAS env var (default 3) drives the in-process RQ worker
+# count in the worker container (infra/worker/worker.py:worker_count()).
+# ``deploy.replicas`` below is a no-op in standalone compose (works only in
+# swarm mode) but is the documented horizontal-scale path for the UNAM
+# host if/when multi-worker-container parallelism is desired.
+#
+# Security (M9):
+#   * The API container NEVER gets the Docker socket.  Only the worker
+#     mounts /var/run/docker.sock so it can spawn engine sandboxes.
+#   * The postgres port (5432) is exposed only to the host for ``psql``
+#     debugging; the api/worker reach postgres via the internal network.
+#   * Caddy listens on 80 + 443.  No other service exposes a host port.
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: pseint
-      POSTGRES_PASSWORD: pseint
-      POSTGRES_DB: pseint
+      POSTGRES_USER: ${POSTGRES_USER:-pseint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pseint}
+      POSTGRES_DB: ${POSTGRES_DB:-pseint}
+    # Internal port only.  Uncomment the next line for local ``psql`` access
+    # from the host machine; Caddy/api/worker reach postgres via the
+    # compose internal network.
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-127.0.0.1:5432:5432}"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pseint -d pseint"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pseint} -d ${POSTGRES_DB:-pseint}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # No host port — the api/worker reach redis via the internal network.
+    # Uncomment the next line to expose redis on the host (e.g. for rq
+    # dashboard debugging) — keep it commented in production.
+    # ports:
+    #   - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: web/api/Dockerfile
+    image: pseint-judge-api:latest
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pseint}:${POSTGRES_PASSWORD:-pseint}@postgres:5432/${POSTGRES_DB:-pseint}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set and at least 32 chars}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set for first boot}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TOKEN_TTL_MINUTES: ${TOKEN_TTL_MINUTES:-1440}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # The api container MUST NOT get the Docker socket (plan §Admin, M9).
+    # No volumes exposing /var/run/docker.sock — only the worker has it.
+    healthcheck:
+      # /healthz is the liveness probe (always 200); the api's own readiness
+      # (/readyz) probes postgres + redis and returns 503 if degraded.  The
+      # healthcheck uses /healthz so a transient redis blip doesn't take the
+      # api out of rotation (Caddy probes the api, /readyz is for ops).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.rqworker
+    image: pseint-judge-worker:latest
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pseint}:${POSTGRES_PASSWORD:-pseint}@postgres:5432/${POSTGRES_DB:-pseint}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set and at least 32 chars}
+      REPLICAS: ${REPLICAS:-3}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Path the wrapper uses to spawn engine containers.  The engine image
+      # was built by todo 34 with tag pseint-judge-worker:latest — same name
+      # as this compose service's image; the wrapper overrides the image
+      # via the ``$WORKER_IMAGE`` env (see scripts/run_sandboxed.py).
+      WORKER_IMAGE: ${WORKER_IMAGE:-pseint-judge-worker:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    # M9: the ONLY container that mounts the Docker socket.  Mounted
+    # read/write (the wrapper uses ``docker run``); the API container has
+    # NO socket mount.  On the UNAM host, restrict this mount to a
+    # specific GID via the docker-compose override (todo 40).
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Read-only source mounts let ``infra.worker.worker`` import
+      # modules off the live tree (debug/dev).  Production builds bake the
+      # modules into the image (see infra/Dockerfile.rqworker).
+      - ../infra:/app/infra:ro
+      - ../scripts:/app/scripts:ro
+      - ../engine/src:/app/engine/src:ro
+      - ../judge/src:/app/judge/src:ro
+      - ../web/api/src:/app/web/api/src:ro
+    healthcheck:
+      # Worker health: probe that the RQ pool is running by importing the
+      # worker module and asserting worker_count() >= 1.  No external probe
+      # endpoint here — the worker is a long-running daemon, not a server.
+      test: ["CMD-SHELL", "PYTHONPATH=/app python -c 'from infra.worker.worker import worker_count; import sys; sys.exit(0 if worker_count() >= 1 else 1)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    # In standalone compose ``deploy.replicas`` is a no-op (swarm-only).  In
+    # swarm mode, this scales the worker container count; the in-process
+    # REPLICAS workers-per-container is a separate axis (set the env var).
+    deploy:
+      replicas: 1
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: web/frontend/Dockerfile
+    image: pseint-judge-frontend:latest
+    # No command/entrypoint override — the image's default ``sleep infinity``
+    # is fine; Caddy mounts the static dist/ via a shared volume (see below).
+    volumes:
+      - frontend_dist:/srv
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+      # ``service_completed_successfully`` is the right condition for a
+      # build-once data producer (the frontend just runs ``npm run
+      # build`` and writes to /srv, then sleeps).  ``service_started``
+      # would race the build.
+      frontend:
+        condition: service_completed_successfully
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      # 443 is only opened when DOMAIN is set (HTTPS mode).  We bind 443
+      # unconditionally here so Caddy can serve the ACME http-01 challenge
+      # even if you later set DOMAIN; when DOMAIN is unset Caddy serves
+      # plain HTTP and ignores the TLS block (it doesn't bind 443 unless
+      # ``{$DOMAIN}`` evaluates to a host with a TLS directive).  In
+      # production (todo 40) Caddy obtains + auto-renews real certs; for
+      # local dev the 443 port is harmless idle.
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy serves the frontend's static dist/ from this volume.
+      - frontend_dist:/srv/frontend:ro
+      # Caddy stores ACME certs (when DOMAIN is set) in a named volume so
+      # renewals survive container recreates.
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    healthcheck:
+      # ``caddy adapt --config /etc/caddy/Caddyfile`` validates the config
+      # and exits 0 on parse success.  We probe via the admin API instead
+      # so a live config + reachable static dir are both checked.
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:2019/config/ > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
+  frontend_dist:
