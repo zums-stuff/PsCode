@@ -11,6 +11,7 @@ import Placeholder from "./routes/student/Placeholder";
 import Solve from "./routes/Solve";
 import Submissions from "./routes/Submissions";
 import ProblemResults from "./routes/ProblemResults";
+import Contest from "./routes/Contest";
 import AdminLayout from "./routes/admin/AdminLayout";
 import AdminProblems from "./routes/admin/AdminProblems";
 import AdminProblemDetail from "./routes/admin/AdminProblemDetail";
@@ -52,7 +53,7 @@ export default function App() {
               <Route path="submissions" element={<Submissions />} />
               <Route path="forum" element={<Placeholder i18nKey="student.forum" />} />
               <Route path="contests" element={<Placeholder i18nKey="student.contests" />} />
-              <Route path="contest/:id" element={<Placeholder i18nKey="student.contest" />} />
+              <Route path="contest/:id" element={<Contest />} />
             </Route>
             <Route
               path="/admin"
