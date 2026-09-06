@@ -300,7 +300,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: rejudge changes result row; failure: teacher B opens teacher A's class → 403 screen. Evidence .omo/evidence/task-23-pseint-judge.txt
   Commit: Y | feat(web): classes and assignments admin
 
-- [ ] 24. Contests admin + live scoreboard view
+- [x] 24. Contests admin + live scoreboard view
   What to do / Must NOT do: /admin/contests (+/:id): create (title, start_at, end_at, scoring_mode cf|ioi, teams_enabled), problem set reorder, participants (add class/individual), teams CRUD (only when teams_enabled), status badge (upcoming/running/ended), live scoreboard rendering (CF/IOI + team rows), phase-based buttons disabled before start. Must NOT let a contest edit change persisted verdicts (recompute only via rejudge).
   Parallelization: Wave 4 | Blocked by: 18,15 | Blocks: 26,32 | Can parallelize with: 22,23
   References: draft D14/D16, M12 (tie-breaks)
