@@ -292,7 +292,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: create problem → GET /api/problems reflects it; failure: save with empty expected output → inline validation blocks submit. Evidence .omo/evidence/task-22-pseint-judge.txt
   Commit: Y | feat(web): problem admin
 
-- [ ] 23. Classes, assignments, submissions admin
+- [x] 23. Classes, assignments, submissions admin
   What to do / Must NOT do: /admin/classes (+/:id): class CRUD + class code display/copy, member list (from self-registration), assignment create (problem + deadline), assignment submissions browser (per-student best, verdict, steps, source view), rejudge button (re-enqueue run). Must NOT allow editing another teacher's class.
   Parallelization: Wave 4 | Blocked by: 18 | Blocks: 26 | Can parallelize with: 22,24
   References: draft C3/D10; rejudge semantics from todo 15 tests
