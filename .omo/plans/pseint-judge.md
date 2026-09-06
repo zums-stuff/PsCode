@@ -267,7 +267,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: client receives per-case verdicts as worker finishes; failure: stale token → 4408 close code. Evidence .omo/evidence/task-19-pseint-judge.txt
   Commit: Y | feat(api): websocket push
 
-- [ ] 20. Rate limiting + request validation
+- [x] 20. Rate limiting + request validation
   What to do / Must NOT do: starlette/redis-backed middleware: per-user runs ≤10/min, submissions ≤30/min; per-IP 60 req/min; 429 + Retry-After; payload caps (source ≤64KB via run schema, input ≤64KB); Validate endpoint (todo 18) reuses the same limits. Must NOT rate-limit healthchecks or static assets.
   Parallelization: Wave 3 | Blocked by: 16,18 | Blocks: (wave gate) | Can parallelize with: 19
   References: draft M13; slowapi or hand-rolled middleware (choose hand-rolled Redis counters, no new dep beyond redis-py)
@@ -275,7 +275,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: normal student flow unaffected (assert no 429 under threshold); failure: burst → 429 body describes limit. Evidence .omo/evidence/task-20-pseint-judge.txt
   Commit: Y | feat(api): rate limiting
 
-- [ ] 21. Listing/polish endpoints
+- [x] 21. Listing/polish endpoints
   What to do / Must NOT do: problemset list with per-user solved state + best verdict; assignment list (deadline, best result, status open/closed); contest list (upcoming/running/ended + registered flag); pagination everywhere; eager-loading to avoid N+1 (selectinload). Must NOT compute scoreboards here (C2 does).
   Parallelization: Wave 3 | Blocked by: 18 | Blocks: (wave gate)
   References: draft C4 (student pages consume these); SQLAlchemy selectinload docs
@@ -284,7 +284,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   Commit: Y | feat(api): listing endpoints
 
 ### Wave 4 - Teacher tooling (C3)
-- [ ] 22. Problem + test-case admin UI
+- [x] 22. Problem + test-case admin UI
   What to do / Must NOT do: React pages /admin/problems (+/:id): statement editor (markdown preview), expected_complexity select, step_budget override, compare_mode select, test-case table (input textarea, expected output, points, seed, order) + "run sample" button calling skip-judge validation (reuse /api/validate semantics via engine endpoint for CE check only). Must NOT expose student role to this route.
   Parallelization: Wave 4 | Blocked by: 18 | Blocks: 26 | Can parallelize with: 23,24
   References: draft C3; react-router + TanStack Query patterns; Vitest for components
