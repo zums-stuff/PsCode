@@ -439,7 +439,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: restore drill on a scratch DB; failure: expired cert scenario documented (Caddy auto-renew note). Evidence .omo/evidence/task-40-pseint-judge.txt
   Commit: Y | feat(ops): deployment hardening
 
-- [~] 41. Seed data + docs
+- [x] 41. Seed data + docs
   What to do / Must NOT do: scripts/seed.py: admin + teacher + 1 class w/ code + 20 students; 4 problems: HolaMundo (O(1), practice), Suma (assignment, O(1)), Primo (assignment, O(n) expected, step_budget from formula), Fibonacci (contest problem, expected O(n); planted O(n^2) and O(2^n) student solutions to demo bands), 1 contest CF-mode w/ participants + 1 planted copied pair (renamed vars, for todo 25 demo); README.md (LOCAL quickstart FIRST: clone → `docker compose up -d` (DOMAIN unset) → seed → open http://localhost; architecture diagram (mermaid); env vars; then the post-plan UNAM switch-over section); OPS.md already from 40. Must NOT seed passwords other than documented demo-credentials section.
   Parallelization: Wave 7 | Blocked by: 40,16 | Blocks: 42
   References: draft M13 (demo creds), C3/C4 flows; seed uses API models directly
