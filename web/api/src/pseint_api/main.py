@@ -38,5 +38,6 @@ def create_app(limiter=None) -> FastAPI:
     app.include_router(validate.router)
     app.include_router(forums.router)
     app.include_router(similarity.router)
+    app.include_router(similarity.admin_router)  # todo 39 anticheat surface
     app.include_router(ws.router)  # WS surface wired after all REST routes
     return app
