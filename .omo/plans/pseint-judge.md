@@ -308,7 +308,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: CF scoreboard sorts solves desc/penalty asc; failure: teams_enabled=false → team CRUD hidden. Evidence .omo/evidence/task-24-pseint-judge.txt
   Commit: Y | feat(web): contests admin
 
-- [ ] 25. Anticheat report UI (consumes todo 39 API)
+- [~] 25. Anticheat report UI (consumes todo 39 API)
   What to do / Must NOT do: /admin/anticheat: scope selector (class/contest/problem), threshold input (default 0.85), pairs table (run A, run B, score) sorted desc, same-team exclusion indicator (pre-applied server-side, M12), side-by-side diff viewer of ORIGINAL sources with differing tokens highlighted, CSV export. NOTE (trailing dep): blocks on todo 39 (Wave 7); exempt from the Wave-4 gate, completes after Wave 7 — see Execution strategy. Must NOT auto-penalize; must NOT show to students.
   Parallelization: Wave 4 | Blocked by: 18,39 | Blocks: 26
   References: draft D13/M12; report API contract from todo 39
@@ -316,7 +316,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: planted pair appears at top; failure: same-team submissions absent from list (exclusion verified). Evidence .omo/evidence/task-25-pseint-judge.txt
   Commit: Y | feat(web): anticheat reports
 
-- [ ] 26. Teacher dashboard + navigation
+- [~] 26. Teacher dashboard + navigation
   What to do / Must NOT do: /admin overview: active assignments, upcoming/running contests, flagged-pair count badge, recent submissions; role-aware sidebar. Must NOT duplicate page logic (links only).
   Parallelization: Wave 4 | Blocked by: 22-25 | Blocks: (wave gate)
   References: draft C3; existing page hooks
@@ -357,7 +357,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: `Leer n; Escribir n*2` with "21" outputs 42; failure: step limit (infinite Mientras) → TLE(step) message w/ suggested fix. Evidence .omo/evidence/task-30-pseint-judge.txt
   Commit: Y | feat(web): practice sandbox
 
-- [ ] 31. Results + history pages
+- [~] 31. Results + history pages
   What to do / Must NOT do: /submissions and /problem/:id/results: per-case table (verdict badge, steps, wall_ms), source viewer, assignment "best" badge (M7), pagination; WS live-updates open run; retry button for failed transport (infra) only. Must NOT allow student to see expected outputs of hidden cases.
   Parallelization: Wave 5 | Blocked by: 29 | Blocks: (wave gate) | Can parallelize with: 32,33
   References: draft M7/D8; run/test_results schema from todo 16
@@ -365,7 +365,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: WA case shows first-diff line info (safe subset: line number only); failure: hidden expected output never in payload (assert via network stub). Evidence .omo/evidence/task-31-pseint-judge.txt
   Commit: Y | feat(web): results and history
 
-- [ ] 32. Contest page + live scoreboard
+- [~] 32. Contest page + live scoreboard
   What to do / Must NOT do: /contest/:id: problem list, per-problem status (accepted attempts, score), submit in contest context, phase badges (upcoming/running/ended with countdown), participants list; live scoreboard component (WS-driven refresh on AC-change events, M12) rendering CF (solves/penalty) or IOI (points) incl. team rows when enabled; register button pre-start. Must NOT show scoreboard before contest start or to non-participants.
   Parallelization: Wave 5 | Blocked by: 29,24 | Blocks: (wave gate) | Can parallelize with: 31,33
   References: draft D14/D16/M12
@@ -373,7 +373,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: participant sees own solved count increment live; failure: non-participant GET scoreboard → 403 notice. Evidence .omo/evidence/task-32-pseint-judge.txt
   Commit: Y | feat(web): contest page and scoreboard
 
-- [ ] 33. Forums (per-problem threads) + moderation
+- [~] 33. Forums (per-problem threads) + moderation
   What to do / Must NOT do: thread page per problem (+contest problems): top-level posts + replies (parent_id), reply box (real accounts only), teacher actions: pin/edit/delete; contest-phase lock: during [start_at, end_at] contest-problem threads are teacher-post-only, opened automatically after end (M9 fix); pagination. Must NOT allow anonymous/anonymized posts or private messages.
   Parallelization: Wave 5 | Blocked by: 29 | Blocks: (wave gate) | Can parallelize with: 31,32
   References: draft D15/M9; forum tables from todo 16
@@ -382,7 +382,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   Commit: Y | feat(web): per-problem forums
 
 ### Wave 6 - Sandbox + workers (C6)
-- [ ] 34. Engine container + hardened run wrapper
+- [~] 34. Engine container + hardened run wrapper
   What to do / Must NOT do: infra/Dockerfile.worker (python:3.11-slim + engine + judge, non-root user, no bash where possible MINIMAL deps); scripts/run_sandboxed.py: first run (or setup step) exports Docker's default seccomp profile to infra/seccomp/default.json (producer documented; the file is created by the script, not hand-assumed); docker run --network none --cap-drop ALL --security-opt=no-new-privileges:true --security-opt seccomp=infra/seccomp/default.json (pinned default profile) --memory 128m --cpus 0.5 --pids-limit 64 --read-only --tmpfs /tmp --user 65534:65534 --stop-timeout 8, input via stdin (docs: engine CLI input contract from todo 7 — --input file OR stdin are both supported; wrapper always uses stdin), wall-kill via --stop-timeout + CLI budgets (M9). Worker connects to the Docker socket via a dedicated management network OR documented host-socket mount with the root-equivalent risk called out in OPS.md (M9 requires hardened socket access — prefer the socket via TCP/TLS or a restricted bind-mount with read-only + no privileged scope); API container MUST NOT get the Docker socket. Unit test the wrapper with real engine run; isolation smoke: no network tooling present in image, no host mounts. Must NOT use nsjail; must NOT mount host paths (except a scratch tmpfs).
   Parallelization: Wave 6 | Blocked by: 7 | Blocks: 35,36
   References: draft M9; Docker run reference; CLI contract from todo 7
@@ -390,7 +390,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: golden program runs sandboxed → identical stdout; failure: CPU spin program → killed at cpu 3s with TLE. Evidence .omo/evidence/task-34-pseint-judge.txt
   Commit: Y | feat(infra): engine container and hardened run
 
-- [ ] 35. Worker pool (RQ)
+- [~] 35. Worker pool (RQ)
   What to do / Must NOT do: infra/worker/worker.py: RQ workers (count from $REPLICAS env, default 3 — compose-managed per todo 36) consuming queue 'runs'; job executes judge_submission (todo 10) via the sandbox wrapper (todo 34) as ONE container per submission running all its test cases inside, M2 lazy rules enforced inside that container (parse-once CE short-circuit + CF lazy-stop; IOI/assignments run all); status transitions queued→running→done/failed persisted via API; retries: max 2 for container/infra errors ONLY, never on verdicts (M2); scoreboard recompute on ANY verdict/points change (CF AC flip, IOI point delta, assignment best-rating change — call C2 scoring fns from todo 14) + nightly batch reconcile job; anticheat enqueue trigger (on submission, throttled: run batch when ≥10 new submissions OR manual from report page). Must NOT judge inline in API process.
   Parallelization: Wave 6 | Blocked by: 34,16 | Blocks: 36
   References: draft C6/M12; RQ docs (redis queue patterns)
@@ -398,7 +398,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: 10/10 verdicts correct in DB; failure: container image missing → job marked infra-failed + retried, API returns 502-consistent status (not wrong verdict). Evidence .omo/evidence/task-35-pseint-judge.txt
   Commit: Y | feat(infra): worker pool
 
-- [ ] 36. docker-compose full stack
+- [~] 36. docker-compose full stack
   What to do / Must NOT do: infra/docker-compose.yml: postgres (volume, healthcheck), redis, api (uvicorn, depends healthy), worker (replicas:$REPLICAS default 3), frontend (static build served by Caddy), caddy (auto-HTTPS via DOMAIN env; HTTP fallback when unset — this is the LOCAL mode used for all plan verification); .env.example documenting every var (incl. ADMIN_USERNAME/ADMIN_PASSWORD, SECRET_KEY, DB pass, REPLICAS); healthchecks each service; smoke script healthz. LOCAL-FIRST: the acceptance "fresh host" IS the developer laptop — `docker compose up -d` with DOMAIN unset must bring the whole stack green at http://localhost. Optional docker-compose.override.yml (gitignored? NO — commit it if local-only tweaks are wanted; keep base compose prod-ready). Must NOT bake secrets into the repo (env-file only, .env in .gitignore); must NOT require a domain or external infra for any acceptance here.
   Parallelization: Wave 6 | Blocked by: 34,35 | Blocks: 37,40
   References: draft D9 (UNAM single VM, internet-facing), M10 (Caddy)
@@ -406,7 +406,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: full-stack healthz chain responds; failure: postgres down → api healthcheck reports degraded (not crash-loop silent). Evidence .omo/evidence/task-36-pseint-judge.txt
   Commit: Y | feat(infra): docker-compose stack
 
-- [ ] 37. Load/burst pass
+- [~] 37. Load/burst pass
   What to do / Must NOT do: scripts/loadtest.py: 200 submissions burst (mixed problems incl. an O(n^2) one) via API as 20 simulated students against the LOCAL compose stack (todo 36, HTTP localhost); assert: all reach done, DB run count == 200 (no loss), p95 verdict latency < 60s from enqueue, worker CPU < 80%; write LOAD.md with numbers + tuning notes (worker count = REPLICAS, memory). Must NOT scale workers mid-test (document instead); must NOT require any external infra.
   Parallelization: Wave 6 | Blocked by: 36 | Blocks: (wave gate)
   References: draft D9 (medium ~200, bursty); M2 (lazy judging reduces load)
@@ -415,7 +415,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   Commit: Y | perf(infra): load pass
 
 ### Wave 7 - Anticheat + deployment (C7)
-- [ ] 38. Anticheat similarity engine (text-level)
+- [~] 38. Anticheat similarity engine (text-level)
   What to do / Must NOT do: judge/src/pseint_judge/similarity.py: normalize(source) = strip // comments, strip all whitespace, lowercase, fold identifier tokens (regex \b[A-Za-z_]\w*\b → "N") (D13); pairwise difflib.SequenceMatcher ratio; scope = per problem within a class grouping or contest; EXCLUDE same-team pairs (M12/D16); batch job writes similarity_pairs (top-k per submission, dedupe); threshold default 0.85 (configurable per class via API). Must NOT use AST fingerprints (user chose minimal text-similarity); must NOT flag same-team pairs; must NOT decide penalties.
   Parallelization: Wave 7 | Blocked by: 10-12,16 | Blocks: 39
   References: draft D13/M12/D16; difflib docs
@@ -423,7 +423,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: copied-with-renames pair flagged; failure: legit different solutions not flagged (threshold boundary test). Evidence .omo/evidence/task-38-pseint-judge.txt
   Commit: Y | feat(judge): anticheat similarity engine
 
-- [ ] 39. Similarity report API + threshold config
+- [~] 39. Similarity report API + threshold config
   What to do / Must NOT do: API routes (teacher): GET /api/admin/anticheat?scope=&threshold= → pairs (run ids, usernames, score) desc; GET /api/admin/anticheat/pair/:a/:b → original sources + normalized render for diff UI (todo 25); POST /api/admin/classes/:id/anticheat-threshold; triggers: manual + automatic batch enqueue from worker (todo 35). Must NOT return normalization leaks (only original + flag).
   Parallelization: Wave 7 | Blocked by: 38 | Blocks: 25
   References: draft D13; similarity schema from todo 16
@@ -431,7 +431,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: teacher fetches pair diff payload; failure: non-teacher GET → 403. Evidence .omo/evidence/task-39-pseint-judge.txt
   Commit: Y | feat(api): similarity report API
 
-- [ ] 40. Deployment hardening (HTTPS, backups, ops) — LOCAL dry-run; UNAM execution is post-plan
+- [~] 40. Deployment hardening (HTTPS, backups, ops) — LOCAL dry-run; UNAM execution is post-plan
   What to do / Must NOT do: Caddyfile (auto-HTTPS when DOMAIN set; security headers; CORS same-origin-only — API rejects cross-origin browser calls unless a CORS_ALLOW_ORIGINS env allowlist is set), ufw guide (default-deny inbound; allow 80/443 + SSH from admin scope; fail2ban for SSH), scripts/backup.sh (pg_dump daily, 7-day retention, cron install, off-host copy documented — external backup target direction in OPS.md), SECRET_KEY startup validation (refuse to boot with len<32 or default value), /healthz + /readyz endpoints + docker healthchecks, JSON structured logs, OPS.md runbook (deploy, upgrade, restore, worker resize, password reset, DB pool sizing, Docker-socket access model, backup restore drill). LOCAL-FIRST RULE: all artifacts above are written, committed and DRY-RUN-VALIDATED locally (config parses, runbook complete, health/ready endpoints green over HTTP); the ONLY prod-only actions (real auto-HTTPS via a real DOMAIN, ufw/fail2ban enforcement on the host, real off-host backup cron) are DOCUMENTED for the UNAM host and executed there only after the user provisions it — never during this plan. Must NOT rely on manual steps that the runbook doesn't document; must NOT commit any real secret.
   Parallelization: Wave 7 | Blocked by: 36 | Blocks: 41
   References: draft M10 (Caddy)/D9 (internet-facing UNAM)/M13 (backups)
@@ -439,7 +439,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: restore drill on a scratch DB; failure: expired cert scenario documented (Caddy auto-renew note). Evidence .omo/evidence/task-40-pseint-judge.txt
   Commit: Y | feat(ops): deployment hardening
 
-- [ ] 41. Seed data + docs
+- [~] 41. Seed data + docs
   What to do / Must NOT do: scripts/seed.py: admin + teacher + 1 class w/ code + 20 students; 4 problems: HolaMundo (O(1), practice), Suma (assignment, O(1)), Primo (assignment, O(n) expected, step_budget from formula), Fibonacci (contest problem, expected O(n); planted O(n^2) and O(2^n) student solutions to demo bands), 1 contest CF-mode w/ participants + 1 planted copied pair (renamed vars, for todo 25 demo); README.md (LOCAL quickstart FIRST: clone → `docker compose up -d` (DOMAIN unset) → seed → open http://localhost; architecture diagram (mermaid); env vars; then the post-plan UNAM switch-over section); OPS.md already from 40. Must NOT seed passwords other than documented demo-credentials section.
   Parallelization: Wave 7 | Blocked by: 40,16 | Blocks: 42
   References: draft M13 (demo creds), C3/C4 flows; seed uses API models directly
@@ -447,7 +447,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: seeded login as teacher shows all 4 problems; failure: rerun seed → idempotent (no duplicates) asserted. Evidence .omo/evidence/task-41-pseint-judge.txt
   Commit: Y | docs: seed data and runbook
 
-- [ ] 42. Playwright E2E journeys
+- [~] 42. Playwright E2E journeys
   What to do / Must NOT do: e2e/ journeys: (a) student registers w/ class code → sees assignment, opens solve page, gets inline error, fixes, Runs sample, submits → verdict shown; (b) assignment best-count: two submissions → best badge = better one; (c) contest: register pre-start, submit during, scoreboard updates live; (d) forum: post + teacher pin; contest-window lock blocks student reply; (e) teacher anticheat: report shows planted pair + diff viewer; (f) mobile viewport 375px solve page usable. Tests run against the LOCAL docker-compose stack (DOMAIN unset, http://localhost) with seeded data (todo 41); no external infra. Must NOT stub WS (real end-to-end).
   Parallelization: Wave 7 | Blocked by: 26,33,32,25,41 | Blocks: (final)
   References: draft C4 flows; Playwright docs; seeded fixtures
@@ -457,10 +457,10 @@ Your next move: approve to start executing the plan (the worker will build it in
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [ ] F1. Plan compliance audit
-- [ ] F2. Code quality review
-- [ ] F3. Real manual QA
-- [ ] F4. Scope fidelity
+- [~] F1. Plan compliance audit
+- [~] F2. Code quality review
+- [~] F3. Real manual QA
+- [~] F4. Scope fidelity
 
 ## Commit strategy
 - Conventional Commits (feat/fix/test/docs/chore/perf with scope), one per todo as annotated. Branch strategy: work directly on `main` in this monorepo (single contributor), OR use a task-owned worktree via `$start-work --worktree <path>` when the user asks for PR/branch mode. Every commit must leave the tree green (tests pass) — no WIP commits.

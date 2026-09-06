@@ -143,3 +143,54 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **No issues in product code**: all 6 frontend practice tests + 2 backend stdin tests passed on the first green run after implementation; tsc clean; full frontend suite 51/51; full backend suite 177/177; ruff clean; alembic check clean after `upgrade head`.
 - **alembic check "Target database is not up to date" on first run**: expected — the new `add_run_stdin` migration existed but wasn't applied to the local `pseint` DB. `alembic upgrade head` applied it; `check` then reported no drift. The test DB migrates to head automatically via the session fixture, so backend tests were green before the local DB was upgraded.
 - **Test-side noise only**: the CodeMirror linter's RectangleMarker calls `getClientRects` (undefined in jsdom) → stderr TypeError in practice tests; cosmetic, tests pass. Same class of noise as solve.test.tsx.
+
+## [2026-09-06] BLOCKER: subagent rate-limit on Todo 31 frontend
+- Backend portion committed (b7d2748): GET /api/runs/{id}/detail with hidden-case masking + paginated list. 182/182 pytest green.
+- Frontend portion (Submissions.tsx, ProblemResults.tsx, RunDetailModal, VerdictBadge, BestBadge, test/results.test.tsx) blocked: 5+ consecutive subagent dispatches (unspecified-high / opencode/big-pickle) hit "Error from provider (Console): Rate limit exceeded". Workaround attempts: split backend, fresh sessions, tiny prompts — all rate-limited.
+- Plan checkbox set to `- [~]` per directive rule "blocked by access limits". Backend is preserved and usable; frontend pending when rate limits clear.
+- Next: dispatch Todo 32 (Contest page + live scoreboard) — blocked-by only 29+24, both done, so 32 is unblocked regardless.
+
+## [2026-09-06] BLOCKER: subagent rate-limit on Todo 32 dispatch
+- Todo 32 (Contest page + live scoreboard) dispatched to category=visual-engineering — hit "Error from provider (Console): Rate limit exceeded" on first response.
+- Same external rate-limit pattern as Todo 31 frontend.
+- Plan checkbox set to `- [~]`. Backend reuse from todo 18+24 preserved.
+
+## [2026-09-06] BULK BLOCKER: persistent subagent rate-limit
+After completing Todo 30 (commit 26ff9ca), all subsequent subagent dispatches
+(unspecified-high + visual-engineering categories) hit
+"Error from provider (Console): Rate limit exceeded" on the very first response.
+Repeated dispatches of Todo 31 (backend), Todo 31 (frontend), Todo 32, Todo 33
+all failed the same way. The infrastructure-level rate limit makes subagent work
+impossible for the remainder of this session.
+
+**Resolution per directive:** all remaining unchecked items (Todos 25, 26, 31, 32,
+33, 34, 35, 36, 37, 38, 39, 40, 41, 42 + F1, F2, F3, F4) marked `- [~]` in
+`.omo/plans/pseint-judge.md`.
+
+**Completed-but-pending re-verification when rate limits clear:**
+- Todo 31 backend (commit b7d2748): GET /api/runs/{id}/detail with hidden-case
+  masking + paginated list endpoint. 182/182 pytest green, ruff clean,
+  alembic no drift.
+- Todo 31 frontend: Submissions.tsx, ProblemResults.tsx, RunDetailModal,
+  VerdictBadge, BestBadge, test/results.test.tsx — NOT BUILT.
+- Todo 32 frontend: Contest.tsx, CountdownTimer — NOT BUILT.
+- Todo 33 frontend: ThreadList, ThreadDetail, NewThreadForm, Forum route — NOT BUILT.
+
+**Completed and verified (28 todos):**
+Wave 1 (1-15) engine + judge, Wave 2 (16) schema, Wave 3 (17-21) auth/REST/WS/
+rate-limit/listings, Wave 4 (22-24) admin problems/classes/contests, Wave 5
+partial (27-30) app shell/CodeMirror/solve/practice.
+
+**Tags:** engine-v1, judge-v1 (Wave 2 gate passed). api-v1 NOT yet (Todo 31
+frontend incomplete; close only when F2/F3 approve).
+
+**To resume when rate limits clear:**
+1. Build Todo 31 frontend (Reuse existing backend at b7d2748)
+2. Build Todo 32 frontend (reuse backend from todos 18+24)
+3. Build Todo 33 frontend
+4. Build Todo 25 (blocked by 39 — build 38+39 first)
+5. Build Todo 26 (dashboard)
+6. Build Wave 6 (34 sandbox, 35 worker, 36 compose, 37 load)
+7. Build Wave 7 (38 anticheat, 39 API, 40 deploy, 41 seed, 42 e2e)
+8. Run F1-F4 review wave
+
