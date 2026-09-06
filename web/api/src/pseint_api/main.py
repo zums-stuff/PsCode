@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from . import ws
 from .routes import (
     assignments,
     auth,
@@ -32,4 +33,5 @@ def create_app() -> FastAPI:
     app.include_router(validate.router)
     app.include_router(forums.router)
     app.include_router(similarity.router)
+    app.include_router(ws.router)  # WS surface wired after all REST routes
     return app
