@@ -68,3 +68,10 @@ export function getAssignmentSubmissions(
     `/api/assignments/${assignmentId}/submissions`,
   );
 }
+
+/** Validate PseInt source server-side (todo 29 inline errors). */
+export function validateSource(
+  source: string,
+): Promise<import("./types").ValidateResult> {
+  return api.post<import("./types").ValidateResult>("/api/validate", { source });
+}

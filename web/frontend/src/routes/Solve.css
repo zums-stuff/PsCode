@@ -1,0 +1,56 @@
+/* Solve page (plan todo 29): 3-pane grid, stacked on mobile. */
+
+.solve-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.solve-statement,
+.solve-editor,
+.solve-results {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.solve-statement h2,
+.solve-editor h2,
+.solve-results h2 {
+  margin-top: 0;
+}
+
+.solve-editor .cm-editor {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 24rem;
+}
+
+.solve-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.solve-context-banner {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #3730a3;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.solve-notice {
+  color: var(--danger);
+}
+
+@media (max-width: 900px) {
+  .solve-grid {
+    grid-template-columns: 1fr;
+  }
+}

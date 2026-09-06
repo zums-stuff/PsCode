@@ -149,6 +149,34 @@ export interface ContestScoreboardRow {
   >;
 }
 
+export interface RunOut {
+  id: number;
+  user_id: number;
+  problem_id: number;
+  kind: string;
+  status: string;
+  summary_verdict: string | null;
+  steps: number | null;
+  wall_ms: number | null;
+  assignment_id: number | null;
+  contest_id: number | null;
+  created_at: string;
+}
+
+export interface TestResultOut {
+  id: number;
+  case_index: number;
+  verdict: string;
+  steps: number | null;
+  wall_ms: number | null;
+  output: string | null;
+  error: string | null;
+}
+
+export interface RunDetailOut extends RunOut {
+  test_results: TestResultOut[];
+}
+
 export interface ContestScoreboard {
   mode: string;
   rows: ContestScoreboardRow[];

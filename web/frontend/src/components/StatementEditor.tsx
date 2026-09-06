@@ -80,7 +80,8 @@ function inlineMarkdown(text: string): ReactNode[] {
   return nodes;
 }
 
-function renderMarkdown(markdown: string): ReactNode {
+/** Markdown -> React nodes (headings, paragraphs, bold/italic, inline code, fences). */
+export function renderMarkdown(markdown: string): ReactNode {
   const lines = markdown.split("\n");
   const nodes: ReactNode[] = [];
   let i = 0;

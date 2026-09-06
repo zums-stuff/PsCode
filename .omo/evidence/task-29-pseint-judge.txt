@@ -1,0 +1,41 @@
+Task 29 — Solve page + inline syntax errors
+============================================
+Date: 2026-09-06
+Status: DONE
+
+Files created:
+  - web/frontend/src/lib/linter.ts              (posFromLineCol + pseintLinter async linter)
+  - web/frontend/src/components/CodeMirrorEditor.tsx  (editable CM6 wrapper with linter+lintGutter+onChange)
+  - web/frontend/src/components/SolveStatementPane.tsx (renders problem title + renderMarkdown)
+  - web/frontend/src/components/SolveResultsPane.tsx   (empty state / run status / per-case table)
+  - web/frontend/src/components/SolveToolbar.tsx       (submit/reset/context-banner, 202/413/429)
+  - web/frontend/src/routes/Solve.tsx                  (3-pane grid route, fetch+poll)
+  - web/frontend/src/routes/Solve.css                  (1fr 1.5fr 1fr grid + mobile 1fr)
+  - web/frontend/test/solve.test.tsx                   (6 tests)
+
+Files modified:
+  - web/frontend/package.json                 (+@codemirror/lint 6.9.7 pinned)
+  - web/frontend/src/lib/api.ts               (+validateSource typed helper)
+  - web/frontend/src/lib/types.ts             (+RunOut, TestResultOut, RunDetailOut interfaces)
+  - web/frontend/src/components/StatementEditor.tsx (+export renderMarkdown)
+  - web/frontend/src/App.tsx                  (+Solve import, problem/:id route)
+  - web/frontend/src/i18n/es.ts               (+20 solve.* keys, no removals)
+
+Red runs: 5 (defaultKeymap import path ×3, wrong .cm-content selector ×1, stale React state ×1)
+
+Acceptance criteria:
+  - [x] npx tsc --noEmit → clean
+  - [x] npx vitest run → 45/45 passed (7 files), including 6/6 solve tests
+  - [x] 3-pane grid: statement (markdown), editor (CM6 with lintGutter), results
+  - [x] Debounced inline syntax errors via POST /api/validate (400ms delay)
+  - [x] Submit via POST /api/runs with 202/413/429 handling
+  - [x] Run polling until terminal status
+  - [x] Mobile responsive (1-column at ≤900px)
+  - [x] Network-down resilience (linter catches fetch errors, returns [])
+  - [x] No client-side parser, no engine/judge/web-api/infra/lang modifications
+
+Key decisions:
+  - defaultKeymap from @codemirror/commands (not @codemirror/view or codemirror)
+  - posFromLineCol: line 1-based + col 0-based → from=doc.line(line).from+col, to=from+1
+  - Selector: .solve-editor-cm .cm-content (statement pane's code-block is first .cm-content)
+  - React state yield: await new Promise(r => setTimeout(r, 0)) before submit click
