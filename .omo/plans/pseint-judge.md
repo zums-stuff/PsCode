@@ -325,7 +325,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   Commit: Y | feat(web): teacher dashboard
 
 ### Wave 5 - Student UX (C4)
-- [ ] 27. App shell, auth pages, routing
+- [x] 27. App shell, auth pages, routing
   What to do / Must NOT do: Vite + React 18 + TS; routes: /login, /register (username, display, password, class_code), / (problems), /problem/:id, /practice, /contest/:id, /submissions, /forum/... ; role-based route guards; token storage + axios interceptor + WS hook (connect/reconnect with backoff + resume refetch per M8); Spanish strings in src/i18n/es.ts (single source). MUST NOT hardcode UI strings outside es.ts.
   Parallelization: Wave 5 | Blocked by: 18,19 | Blocks: 29-33 | Can parallelize with: 28
   References: draft M8/D11; React Router v6, TanStack Query v5
