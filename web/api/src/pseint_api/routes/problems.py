@@ -13,7 +13,6 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..deps import get_current_user, get_db, require_teacher
@@ -86,14 +85,6 @@ def create_problem(
     db.add(problem)
     db.commit()
     return problem
-
-
-@router.get("", response_model=list[ProblemOut])
-def list_problems(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    return db.scalars(select(Problem).order_by(Problem.id)).all()
 
 
 @router.get("/{problem_id}", response_model=ProblemOut)

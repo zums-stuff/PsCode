@@ -443,8 +443,8 @@ def test_list_problems(client, db_session):
     resp = client.get("/api/problems", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 2
-    titles = {p["title"] for p in body}
+    assert body["total"] == 2
+    titles = {p["title"] for p in body["items"]}
     assert titles == {"P1", "P2"}
 
 
@@ -873,8 +873,8 @@ def test_list_assignments_student_sees_own_class(client, db_session):
     resp = client.get("/api/assignments", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 1
-    assert body[0]["problem_id"] == problem.id
+    assert body["total"] == 1
+    assert body["items"][0]["problem_id"] == problem.id
 
 
 def test_list_assignments_teacher_sees_own(client, db_session):
@@ -883,14 +883,14 @@ def test_list_assignments_teacher_sees_own(client, db_session):
     cls = _make_class(db_session, teacher, code="C1")
     other_cls = _make_class(db_session, other, code="C2")
     problem = _make_problem(db_session, teacher)
-    _make_assignment(db_session, cls, problem)
+    mine = _make_assignment(db_session, cls, problem)
     _make_assignment(db_session, other_cls, problem)
     token = _login(client, "prof")
     resp = client.get("/api/assignments", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 1
-    assert body[0]["class_id"] == cls.id
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == mine.id
 
 
 # --- Contests ---------------------------------------------------------------
@@ -956,8 +956,8 @@ def test_list_contests(client, db_session):
     resp = client.get("/api/contests", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 2
-    assert {c["title"] for c in body} == {"C1", "C2"}
+    assert body["total"] == 2
+    assert {c["title"] for c in body["items"]} == {"C1", "C2"}
 
 
 def test_get_contest(client, db_session):

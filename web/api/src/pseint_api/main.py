@@ -12,6 +12,7 @@ from .routes import (
     classes,
     contests,
     forums,
+    listings,
     problems,
     runs,
     scoreboard,
@@ -32,6 +33,7 @@ def create_app(limiter=None) -> FastAPI:
     app.include_router(assignments.router)
     app.include_router(contests.router)
     app.include_router(scoreboard.router)
+    app.include_router(listings.router)  # paginated lists (todo 21)
     app.include_router(runs.router)
     app.include_router(validate.router)
     app.include_router(forums.router)

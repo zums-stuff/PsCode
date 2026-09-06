@@ -11,11 +11,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..deps import get_current_user, get_db, require_teacher
-from ..models import Assignment, Class, ClassMember, Problem, User
+from ..deps import get_db, require_teacher
+from ..models import Assignment, Class, Problem, User
 
 router = APIRouter(prefix="/api/assignments")
 
@@ -59,29 +58,3 @@ def create_assignment(
     db.add(assignment)
     db.commit()
     return assignment
-
-
-@router.get("", response_model=list[AssignmentOut])
-def list_assignments(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    if user.role == "admin":
-        return db.scalars(select(Assignment).order_by(Assignment.id)).all()
-    if user.role == "teacher":
-        class_ids = db.scalars(
-            select(Class.id).where(Class.teacher_id == user.id)
-        ).all()
-        return db.scalars(
-            select(Assignment)
-            .where(Assignment.class_id.in_(class_ids))
-            .order_by(Assignment.id)
-        ).all()
-    class_ids = db.scalars(
-        select(ClassMember.class_id).where(ClassMember.user_id == user.id)
-    ).all()
-    return db.scalars(
-        select(Assignment)
-        .where(Assignment.class_id.in_(class_ids))
-        .order_by(Assignment.id)
-    ).all()

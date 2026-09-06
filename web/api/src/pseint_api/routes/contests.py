@@ -106,14 +106,6 @@ def create_contest(
     return contest
 
 
-@router.get("", response_model=list[ContestOut])
-def list_contests(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    return db.scalars(select(Contest).order_by(Contest.id)).all()
-
-
 @router.get("/{contest_id}", response_model=ContestOut)
 def get_contest(
     contest_id: int,

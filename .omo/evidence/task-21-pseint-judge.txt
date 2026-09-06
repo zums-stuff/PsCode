@@ -1,0 +1,114 @@
+EVIDENCE — Todo 21 "Listing/polish endpoints"
+=============================================
+Date: 2026-09-05
+Worker: Sisyphus-Junior (opencode/big-pickle)
+Plan file: .omo/plans/pseint-judge.md (lines 278-284)
+
+STATUS: COMPLETE — acceptance criteria met, all verification gates green.
+
+WHAT WAS BUILT
+--------------
+New file web/api/src/pseint_api/routes/listings.py — three paginated GET
+endpoints, all with the {items, page, size, total} envelope:
+
+1. GET /api/problems?page=1&size=20
+   Items: {id, title, expected_complexity, compare_mode, is_solved,
+   best_verdict}. is_solved = user has >=1 Run with summary_verdict="AC".
+   best_verdict = highest-priority verdict among the user's runs
+   (AC > WA > TLE > RE > CE), null when no runs. Per-user state computed
+   from ONE aggregate query (select Run.problem_id, Run.summary_verdict
+   where user_id = me, verdict not null) grouped in Python — no N+1, no
+   per-problem lookup.
+
+2. GET /api/assignments?page=1&size=20
+   Items: {id, problem_id, deadline, status, best_verdict, best_steps}.
+   status = "open" if now < deadline else "closed". Scoped to the classes
+   the user may see (admin: all, teacher: own classes, student:
+   ClassMember) — mirrors the pre-existing list_assignments role logic.
+   best_verdict/best_steps from the user's runs on that assignment
+   (Run.assignment_id == assignment.id), best verdict wins, fewest steps
+   breaks ties. One aggregate query for all assignment runs.
+
+3. GET /api/contests?page=1&size=20
+   Items: {id, title, start_at, end_at, status, scoring_mode,
+   teams_enabled, is_registered}. status = upcoming/running/ended from
+   start_at/end_at vs now. is_registered = user in ContestParticipant OR
+   in a ContestTeamMember of any team in the contest (two set queries,
+   unioned in Python).
+
+Pagination: page >= 1, 1 <= size <= 100 via FastAPI Query(ge/le) -> 422
+on violation; defaults page=1 size=20; page beyond range -> empty items
+list with 200 (never 500); total via select(func.count()).
+
+EAGER-LOADING / N+1
+-------------------
+The plan requires selectinload-style eager loading to avoid N+1. The
+response items reference ONLY columns (no relationship objects are
+serialized), so no relationship is ever lazy-loaded: the per-user state
+is computed from one aggregate query per list, and the assignment
+class/problem objects the plan mentions are not part of the response
+shape and are never touched. Zero N+1 by construction; documented in the
+module docstring.
+
+SUPERSEDED ENDPOINTS (deviation from brief, documented)
+-------------------------------------------------------
+The pre-existing plain-list endpoints at the same paths (list_problems in
+routes/problems.py, list_contests in routes/contests.py, list_assignments
+in routes/assignments.py, todo 18) were REMOVED — they returned bare
+lists and would have conflicted with the new paginated endpoints at the
+same paths (FastAPI matches the first registered route; leaving them
+would shadow the new ones or produce a wrong OpenAPI schema). The 4
+existing tests in tests/test_api.py that asserted the old bare-list shape
+were updated to the {items, page, size, total} envelope (test_list_problems,
+test_list_contests, test_list_assignments_student_sees_own_class,
+test_list_assignments_teacher_sees_own). No test cases were deleted or
+replaced; only the response-shape assertions changed. This was REQUIRED
+by the brief's own verification gate ("full pytest tests/ -q -> all
+pre-existing tests still green") — the old shape and the new shape cannot
+coexist at one path.
+
+TDD
+---
+Red first: tests/test_listings.py written before any implementation
+(8 failed: ImportError + old-endpoint shape mismatches; 1 passed: the
+401 test, which the old endpoint also satisfies). Green after listings.py
++ main.py wiring + old-endpoint removal: 9/9.
+
+VERIFICATION (all gates)
+------------------------
+$ cd web/api
+$ ../../.venv/bin/python -m pytest tests/test_listings.py -q
+  9 passed, 2 warnings in 6.51s
+$ ../../.venv/bin/ruff check src tests/
+  All checks passed!
+$ ../../.venv/bin/alembic check
+  No new upgrade operations detected.   (todo 21 adds NO tables)
+$ ../../.venv/bin/python -m pytest tests/ -q
+  156 passed, 2 warnings in 45.99s   (147 pre-existing + 9 new)
+
+QA SCENARIOS (plan lines 283)
+-----------------------------
+happy: 3 problems, 1 solved -> solved=true only there
+  -> test_problems_listing_solved_flags (is_solved True only on the AC
+     problem; best_verdict="AC"; others False/None)
+failure: page beyond range -> empty list 200 (not 500)
+  -> test_problems_page_beyond_range_empty_200 asserts exactly
+     {"items": [], "page": 10, "size": 10, "total": 25} with 200.
+
+FILES
+-----
+Created:
+  web/api/src/pseint_api/routes/listings.py
+  web/api/tests/test_listings.py
+  .omo/evidence/task-21-pseint-judge.txt
+Modified:
+  web/api/src/pseint_api/main.py            (import + include_router)
+  web/api/src/pseint_api/routes/problems.py (removed superseded list_problems)
+  web/api/src/pseint_api/routes/contests.py (removed superseded list_contests)
+  web/api/src/pseint_api/routes/assignments.py (removed superseded list_assignments)
+  web/api/tests/test_api.py                 (4 list-shape assertions -> envelope)
+Not modified: engine/, judge/, web/frontend/, .omo/plans/pseint-judge.md
+
+COMMIT
+------
+feat(api): listing endpoints  (one commit, tree green)
