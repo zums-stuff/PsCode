@@ -1,0 +1,27 @@
+=== Todo 17 evidence: Auth (registration, login, JWT, roles) ===
+Date: 2026-09-06T01:48:35Z
+
+--- 1. pytest tests/test_auth.py -q ---
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+16 passed, 2 warnings in 2.62s
+
+--- 2. ruff check src tests/test_auth.py ---
+All checks passed!
+exit=0
+
+--- 3. alembic check (no drift) ---
+No new upgrade operations detected.
+
+--- 4. Full suite sanity: pytest tests/ -q ---
+35 passed, 2 warnings in 4.58s
+
+--- Files changed ---
+ M .omo/notepads/pseint-judge/issues.md
+ M .omo/notepads/pseint-judge/learnings.md
+ M web/api/pyproject.toml
+ M web/api/src/pseint_api/config.py
+?? web/api/src/pseint_api/auth.py
+?? web/api/src/pseint_api/deps.py
+?? web/api/src/pseint_api/main.py
+?? web/api/src/pseint_api/routes/
+?? web/api/tests/test_auth.py

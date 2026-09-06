@@ -81,3 +81,9 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **alembic check drift on composite-PK join tables**: autogenerate emitted PK + redundant named UniqueConstraint; PG composite PK already implies uniqueness so alembic omitted the constraint → drift. Fixed by removing redundant UniqueConstraints from models.
 - **PG enum types persist after downgrade**: `alembic downgrade base` + re-upgrade failed with `DuplicateObject: type "user_role" already exists`. Fixed by `DROP TYPE ... CASCADE` before re-running (or `docker compose down -v` for a truly fresh DB).
 - **alembic check failed with placeholder URL**: env.py only overrode the URL when DATABASE_URL was set, so `alembic check` without the env var used the `driver://user:pass@localhost/dbname` placeholder → `NoSuchModuleError`. Fixed: env.py always uses `config.database_url()`.
+
+## Todo 17 — Auth: registration, login, JWT, roles (2026-09-05)
+
+- **Test isolation gap in the auth test file**: the session-scoped test DB + TestClient commits meant `test_register_with_invalid_class_code_400` got 409 (alice already registered by the previous test) instead of 400. Fixed with an autouse per-test truncate fixture (`reversed(Base.metadata.sorted_tables)` deletes). Not a product bug — a test-harness gap.
+- **Brief's SECRET_KEY placement would not have worked**: the continuation brief said to add `monkeypatch.setenv("SECRET_KEY", ...)` inside the test_engine fixture's try block, but `monkeypatch.undo()` in the `finally` runs before any test executes, so the key would be gone at request time. Used a session-scoped autouse fixture instead (documented in learnings).
+- **StarletteDeprecationWarning**: `fastapi.testclient` warns that httpx is deprecated in favor of httpx2. Cosmetic; no action taken (todo 18+ may revisit).

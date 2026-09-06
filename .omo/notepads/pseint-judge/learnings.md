@@ -137,3 +137,12 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **psycopg.sql.Composed can't go through SQLAlchemy conn.execute()**: raises `ObjectNotExecutableError`. Use `text()` with a constant identifier (safe) or the raw psycopg connection.
 - **Test DB pattern**: session-scoped fixture creates `pseint_test` on the same docker postgres (via the `postgres` maintenance DB with AUTOCOMMIT), runs `command.upgrade(Config("alembic.ini"), "head")`, yields an engine, drops the DB with `DROP DATABASE ... WITH (FORCE)`.
 - **`__test__ = False` on model classes**: `TestCase`/`TestResult` get picked up by pytest as test classes (PytestCollectionWarning). Mark them `__test__ = False`.
+
+## Todo 17 — Auth: registration, login, JWT, roles (2026-09-05)
+
+- **pwdlib raises `UnknownHashError` for non-argon2 hashes**: `PasswordHash.recommended().verify(plain, "x")` raises `pwdlib.exceptions.UnknownHashError`, not ValueError. The constant-time fallback (`hmac.compare_digest`) is what lets a test-seeded admin with `password_hash="x"` log in with password "x".
+- **HTTP tests commit → rollback-only fixtures can't isolate them**: the session-scoped test DB persists rows across tests (register commits). A function-scoped autouse fixture that deletes all rows (`reversed(Base.metadata.sorted_tables)`) before each test is the fix — rollback alone is insufficient for TestClient-driven tests.
+- **SECRET_KEY must be set for the whole test session, not just during fixture setup**: `monkeypatch.undo()` in the test_engine fixture's `finally` would undo a SECRET_KEY setenv added inside the try block. Use a session-scoped autouse fixture that sets `os.environ["SECRET_KEY"]` and pops it at teardown.
+- **JWT expiry test via negative TTL**: `TOKEN_TTL_MINUTES=-1` makes `exp` land in the past → `jwt.decode` raises `ExpiredSignatureError` (a `JWTError` subclass) → 401. No need to sleep or mock time.
+- **HTTPBearer(auto_error=False) + manual 401**: cleaner than OAuth2PasswordBearer for a pure-Bearer API; missing credentials → explicit 401 with `WWW-Authenticate: Bearer` header.
+- **Role guards as plain functions with `Depends` defaults**: `require_teacher(user: User = Depends(get_current_user))` works both as a FastAPI dependency AND as a directly-callable function (tests call `require_teacher(student)` with a constructed User and assert the HTTPException).
