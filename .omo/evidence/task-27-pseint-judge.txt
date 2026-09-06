@@ -1,0 +1,68 @@
+TASK 27 — App shell, auth pages, routing
+=========================================
+Date: 2026-09-06
+Plan: .omo/plans/pseint-judge.md (todo 27, lines 328-334)
+Status: COMPLETE
+
+FILES
+-----
+Frontend (web/frontend):
+- src/lib/ws.ts (new): useRunSocket hook — native WebSocket to
+  /ws/submissions?token=<JWT>[&contest_id=<id>], exponential backoff with
+  jitter (500ms base, 15s cap), server replay (last 20 runs, M8) surfaced as
+  events, status exposed (idle/connecting/open/reconnecting/closed), torn down
+  on logout.
+- src/routes/Register.tsx (rewritten): full student registration —
+  username/display_name/password/class_code (optional), inline validation
+  (username/display required, password >= 8 chars), POST /api/register then
+  auto-login via auth context, lands on /problems.
+- src/routes/StudentLayout.tsx (new): student header with nav (Problemas,
+  Práctica, Entregas, Foro, Concursos), user badge, logout; admin link shown
+  for non-student roles.
+- src/routes/student/Problems.tsx (new): landing problems list
+  (GET /api/problems?page=1&size=100), solved/complexity columns, link to
+  /problem/:id.
+- src/routes/student/Placeholder.tsx (new): placeholder for pages built in
+  todos 29-33 (practice, submissions, forum, contests, problem/:id,
+  contest/:id) so the shell routes are real and testable.
+- src/lib/auth.tsx (modified): added RequireAuth guard (any authenticated
+  user; unauthenticated -> /login with destination preserved).
+- src/App.tsx (modified): student routes under RequireAuth + StudentLayout
+  (/, /problem/:id, /practice, /submissions, /forum, /contests, /contest/:id);
+  /admin stays RequireRole [teacher, admin]; /login and /register public.
+- src/i18n/es.ts (modified): register.* validation/submit keys + student.nav.*
+  + student.problems.* + placeholder keys. No hardcoded UI strings.
+- test/auth-routing.test.tsx (new): 7 tests — register flow (POST /api/register
+  + auto-login -> /problems, token+user persisted), register validation errors,
+  unauthenticated / -> /login, student /admin -> /403, authenticated student
+  sees problems list, teacher sees admin link, full App renders student routes.
+
+ACCEPTANCE ASSERTIONS (plan lines 328-334)
+------------------------------------------
+- Vite + React 18 + TS routes: /login, /register, / (problems), /problem/:id,
+  /practice, /contest/:id, /submissions, /forum/...: DONE.
+- Role-based route guards: DONE (RequireAuth for student area, RequireRole
+  [teacher, admin] for /admin; student on /admin -> /403).
+- Token storage + axios interceptor: DONE (existing pseint:token storage +
+  fetch wrapper with Bearer injection; WS hook uses the same token).
+- WS hook (connect/reconnect with backoff + resume refetch per M8): DONE
+  (useRunSocket; server replay on connect = resume; backoff with jitter).
+- Spanish strings in src/i18n/es.ts (single source): DONE (all new strings in
+  es.ts; tsc catches missing keys).
+- vitest green (routing + guards): DONE — 7/7 new tests, full suite 39/39.
+- Playwright register-with-class-code journey: deferred to todo 42 (needs live
+  compose stack); the register flow is covered by the vitest register test.
+
+VERIFICATION COMMANDS (all green)
+---------------------------------
+$ cd web/frontend && npx vitest run test/auth-routing.test.tsx
+  7 passed
+$ cd web/frontend && npx vitest run
+  39 passed (6 files: lang-pseint 11, editor-mount 2, admin-problems 6,
+  admin-classes 6, admin-contests 9, auth-routing 7)
+$ cd web/frontend && npx tsc --noEmit
+  clean
+
+COMMIT
+------
+feat(web): app shell and auth

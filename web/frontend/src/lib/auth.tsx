@@ -138,3 +138,12 @@ export function RequireRole({ roles, children }: RequireRoleProps) {
   if (!user || !roles.includes(user.role)) return <Navigate to="/403" replace />;
   return <>{children}</>;
 }
+
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { token, initializing } = useAuth();
+  const location = useLocation();
+
+  if (initializing) return null;
+  if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
+  return <>{children}</>;
+}

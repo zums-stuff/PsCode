@@ -1,10 +1,13 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AuthProvider, RequireRole } from "./lib/auth";
+import { AuthProvider, RequireAuth, RequireRole } from "./lib/auth";
 import Login from "./routes/Login";
 import Register from "./routes/Register";
 import Forbidden from "./routes/Forbidden";
 import NotFound from "./routes/NotFound";
+import StudentLayout from "./routes/StudentLayout";
+import Problems from "./routes/student/Problems";
+import Placeholder from "./routes/student/Placeholder";
 import AdminLayout from "./routes/admin/AdminLayout";
 import AdminProblems from "./routes/admin/AdminProblems";
 import AdminProblemDetail from "./routes/admin/AdminProblemDetail";
@@ -28,10 +31,25 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/admin/problems" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/403" element={<Forbidden />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <StudentLayout />
+                </RequireAuth>
+              }
+            >
+              <Route index element={<Problems />} />
+              <Route path="problem/:id" element={<Placeholder i18nKey="student.problem" />} />
+              <Route path="practice" element={<Placeholder i18nKey="student.practice" />} />
+              <Route path="submissions" element={<Placeholder i18nKey="student.submissions" />} />
+              <Route path="forum" element={<Placeholder i18nKey="student.forum" />} />
+              <Route path="contests" element={<Placeholder i18nKey="student.contests" />} />
+              <Route path="contest/:id" element={<Placeholder i18nKey="student.contest" />} />
+            </Route>
             <Route
               path="/admin"
               element={
