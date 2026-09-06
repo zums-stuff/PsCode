@@ -174,3 +174,14 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **Per-IP test trick**: `/api/me` 401s without auth but the middleware counts the request BEFORE the route runs — 60×401 then 61st → 429. Every non-skipped request counts against IP regardless of auth outcome.
 - **Health/static skip proof**: the API has no /health route (healthz/readyz are Caddy-level, todo 40) — hits return 404, so the test asserts `!= 429` and proves non-consumption by doing 60 real requests after 100 skipped ones (all fit, 61st → 429).
 - **InMemoryRateLimiter window reset test**: `window_seconds=1` + `time.sleep(1.1)` proves the dict counter resets after expiry — no clock injection needed.
+
+## Todo 21 — Listing/polish endpoints (2026-09-05)
+
+- **Per-user state via ONE aggregate query, not selectinload**: the plan says "eager-loading to avoid N+1 (selectinload)", but the listing response items reference ONLY columns — no relationship is serialized. The right move is a single `select(Run.problem_id, Run.summary_verdict).where(user_id=me, verdict not null)` grouped in Python, not loading relationships that are never touched. Zero N+1 by construction; selectinload would have been dead weight.
+- **Verdict "best" = priority max, not SQL max**: AC > WA > TLE > RE > CE is a custom order (alphabetical max would pick WA over AC). `max(verdicts, key=VERDICT_PRIORITY.get)` in Python beats a CASE WHEN in SQL for readability.
+- **Assignment best is per-assignment, not per-problem**: best_verdict/best_steps come from `Run.assignment_id == assignment.id` (the assignment submissions), NOT any run on the problem. Practice runs on the same problem don't count toward the assignment's best.
+- **Tiebreak for best_steps**: best verdict wins; among equal verdicts, fewest steps wins. Implemented as tuple compare `(VERDICT_PRIORITY[v], -(steps or 0))`.
+- **FastAPI Query(ge=1, le=100) gives 422 for free**: page>=1 and 1<=size<=100 validation is one decorator arg, no manual HTTPException. Beyond-range pages need NO special handling — offset/limit naturally returns an empty list with 200.
+- **Generic Page[T] envelope**: `class Page(BaseModel, Generic[T]): items: list[T]; page; size; total` + `response_model=Page[ProblemListItem]` — Pydantic v2 generics work cleanly with FastAPI.
+- **Empty `.in_([])` is safe in SQLAlchemy 2.x**: a student in no classes produces `class_id.in_([])` which renders as a false expression — returns nothing, no crash.
+- **Route conflicts at the same path+method**: FastAPI matches the FIRST registered route; the OpenAPI schema keeps the LAST. Replacing a plain-list endpoint with a paginated one at the same path means the old function must be REMOVED (not shadowed) or the docs lie.
