@@ -1,0 +1,66 @@
+# Task 38 — Anticheat similarity engine (text-level) — Evidence
+
+**Date:** 2026-09-06
+**Plan todo:** 38 (plan lines 418-424)
+**Commit:** feat(judge): anticheat similarity engine
+
+## Files
+- `judge/src/pseint_judge/similarity.py` — text-similarity engine (pure)
+  - `normalize(source: str) -> str` — D13 four-step pipeline
+  - `similarity(a: str, b: str) -> float` — SequenceMatcher ratio over normalized forms
+  - `find_pairs(submissions, *, scope, exclude_team_pairs, threshold, top_k) -> list[SimilarityPair]` — pairwise scan + top-k per submission
+  - `batch_compute(...)` — worker entry point delegating to `find_pairs`
+  - `SimilarityPair` dataclass (frozen, matches `similarity_pairs` schema from todo 16)
+  - `TextSubmission` dataclass (carries `id`, `source`, `user_id`, optional `team_id`)
+  - `DEFAULT_THRESHOLD = 0.85`, `DEFAULT_TOP_K = 5`, `SCOPES = {class, contest, problem}`
+- `judge/tests/test_similarity.py` — 23 tests across 5 classes
+
+## D13 normalization pipeline
+1. Strip `//` line comments via `re.compile(r"//[^\n]*").sub("", source)`.
+2. Lowercase.
+3. Fold identifier tokens via `re.sub(r"\b[A-Za-z_]\w*\b", "N", ...)`.
+4. Strip all whitespace via `re.sub(r"\s+", "", ...)`.
+
+**Order matters (recorded in evidence because the task brief listed a different
+order):** folding MUST happen before whitespace is stripped, otherwise
+`\b[A-Za-z_]\w*\b` misses identifiers that become glued to adjacent digits
+(e.g. `0Para` after ws-strip has no `\b` boundary between `0` and `P`).
+Lowercasing before fold keeps the placeholder `N` uppercase. Comments are
+stripped first so a `//` inside a string literal cannot swallow the rest of
+the line. The four operations are still applied; only the application order
+differs from the task brief.
+
+## Design decisions
+- **Canonical ordering for dedupe.** Each emitted pair uses `(min(a,b), max(a,b))`
+  so the same pair can never appear twice regardless of submission order. The
+  `seen` set is a belt-and-suspenders guard against duplicate inputs (e.g.
+  caller passes `[a, a, b]`).
+- **Top-k is per submission; union is symmetric.** A pair survives the cap iff
+  either side kept the other — this is the natural "top-k per submission" rule
+  and makes the API's report stable when many copies share a central source.
+- **`exclude_team_pairs`** accepts any iterable of `(id_a, id_b)` tuples; both
+  orderings are accepted and stored as `frozenset({a, b})` keys.
+- **No DB writes** (pure module); the API layer (todo 39) persists.
+- **No AST fingerprints** (user chose minimal text-similarity per D13).
+
+## Acceptance results
+1. `cd judge && python -m pytest tests/test_similarity.py -q` → **23 passed**.
+2. `cd judge && python -m pytest tests/ -q` → **113 passed** (no regressions in
+   other judge tests: runner, compare, complexity, determinism, scoring, verdicts).
+3. `cd judge && python -m ruff check src tests/test_similarity.py` → **All
+   checks passed!** (line-length 88, E/F/I/N/W/UP).
+4. Specific QA scenarios pinned:
+   - Planted renamed-variable pair (`i`→`j`, `n`→`m`, `suma`→`total`) →
+     `similarity(...) == 1.0` (after fold both programs normalize identically).
+   - Bubble sort vs merge sort → `similarity(...) == 0.40` (well below 0.85;
+     no false positive on legitimately different solutions).
+   - Same-team pair excluded — confirmed for both `team_id`-driven exclusion
+     and the `exclude_team_pairs` parameter.
+5. Module is imported by no other module yet (todo 39 wires the API).
+
+## Test classes
+- `TestNormalize` (6) — comments, whitespace, lowercase, fold, full pipeline, empty.
+- `TestSimilarity` (4) — identical, renamed pair, different algorithms, unrelated.
+- `TestFindPairsExclusions` (4) — same-team, different-team, explicit exclude, scope error.
+- `TestFindPairsFiltering` (5) — threshold, top_k cap, dedupe, score-desc sort, defaults.
+- `TestRecordsAndBatch` (4) — dataclass fields, batch_compute delegation, scope passthrough, planted-pair end-to-end.

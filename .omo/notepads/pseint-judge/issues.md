@@ -194,3 +194,8 @@ frontend incomplete; close only when F2/F3 approve).
 7. Build Wave 7 (38 anticheat, 39 API, 40 deploy, 41 seed, 42 e2e)
 8. Run F1-F4 review wave
 
+
+## Todo 38 — Anticheat similarity engine (2026-09-06)
+
+- **Task brief's normalization order is internally inconsistent** — listed `strip ws → lowercase → fold` but the provided regex `\b[A-Za-z_]\w*\b` requires whitespace as a token boundary. Applied fold BEFORE ws-strip to make the regex work as intended (and to make the planted renamed-pair test pass); recorded in evidence as a spec-vs-implementation deviation.
+- **Spec's `bubble vs merge` QA scenario** — with naive order these scored 0.83+, which would have been a false positive above the 0.85 threshold for some algorithm pairs. After reordering, the score drops to 0.40 (well below threshold). The reorder is REQUIRED for the false-positive guard to work, not just for the planted positive.
