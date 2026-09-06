@@ -202,3 +202,22 @@ export interface ContestScoreboard {
   mode: string;
   rows: ContestScoreboardRow[];
 }
+
+export interface ForumThread {
+  id: number;
+  problem_id: number;
+  contest_id: number | null;
+  title: string;
+  created_by: number;
+  pinned: boolean;
+  created_at: string;
+}
+
+export interface ForumPost {
+  id: number;
+  thread_id: number;
+  parent_id: number | null;
+  author_id: number;
+  body: string;
+  created_at: string;
+}

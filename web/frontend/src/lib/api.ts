@@ -120,3 +120,71 @@ export function getRunDetail(
     `/api/runs/${runId}/detail`,
   );
 }
+
+/** List a problem's forum threads (todo 18 / todo 33). */
+export function listForumThreads(
+  problemId: number,
+): Promise<import("./types").ForumThread[]> {
+  return api.get<import("./types").ForumThread[]>(
+    `/api/problems/${problemId}/threads`,
+  );
+}
+
+/** Create a new thread (todo 18). Returns the new thread. */
+export function createForumThread(
+  problemId: number,
+  title: string,
+  body: string,
+): Promise<import("./types").ForumThread> {
+  return api.post<import("./types").ForumThread>(
+    `/api/problems/${problemId}/threads`,
+    { title, body },
+  );
+}
+
+/** List a thread's posts (todo 18). */
+export function listForumPosts(
+  threadId: number,
+): Promise<import("./types").ForumPost[]> {
+  return api.get<import("./types").ForumPost[]>(
+    `/api/threads/${threadId}/posts`,
+  );
+}
+
+/** Post a reply on a thread. `parentId` is optional (todo 33 nested replies). */
+export function createForumPost(
+  threadId: number,
+  body: string,
+  parentId?: number | null,
+): Promise<import("./types").ForumPost> {
+  return api.post<import("./types").ForumPost>(
+    `/api/threads/${threadId}/posts`,
+    { body, parent_id: parentId ?? null },
+  );
+}
+
+/** Pin / unpin a thread (teacher/admin — todo 33 moderation). */
+export function pinForumThread(
+  threadId: number,
+  pinned: boolean,
+): Promise<import("./types").ForumThread> {
+  return api.patch<import("./types").ForumThread>(
+    `/api/threads/${threadId}`,
+    { pinned },
+  );
+}
+
+/** Edit a post body (teacher/admin — todo 33 moderation). */
+export function updateForumPost(
+  postId: number,
+  body: string,
+): Promise<import("./types").ForumPost> {
+  return api.patch<import("./types").ForumPost>(`/api/posts/${postId}`, {
+    body,
+  });
+}
+
+/** Delete a post (teacher/admin — todo 33 moderation). */
+export function deleteForumPost(postId: number): Promise<void> {
+  return api.delete<void>(`/api/posts/${postId}`);
+}
