@@ -1197,6 +1197,248 @@ def test_list_teams(client, db_session):
     assert {t["name"] for t in body} == {"A", "B"}
 
 
+# --- Contest admin (todo 24) -------------------------------------------------
+
+
+def test_patch_contest_own_teacher_200(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    token = _login(client, "prof")
+    resp = client.patch(
+        f"/api/contests/{contest.id}",
+        json={"title": "C1 v2"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "C1 v2"
+    # scoring_mode / teams_enabled are NOT editable (persisted verdicts safe)
+    assert body["scoring_mode"] == "cf"
+    assert body["teams_enabled"] is False
+
+
+def test_patch_contest_other_teacher_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    _make_user(db_session, "other", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    token = _login(client, "other")
+    resp = client.patch(
+        f"/api/contests/{contest.id}",
+        json={"title": "hacked"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 403
+
+
+def test_patch_contest_admin_200(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    _make_user(db_session, "admin", role="admin")
+    token = _login(client, "admin")
+    resp = client.patch(
+        f"/api/contests/{contest.id}",
+        json={"title": "renamed"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "renamed"
+
+
+def test_patch_contest_invalid_times_422(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    token = _login(client, "prof")
+    now = datetime.now(UTC)
+    resp = client.patch(
+        f"/api/contests/{contest.id}",
+        json={
+            "start_at": (now + timedelta(hours=2)).isoformat(),
+            "end_at": (now + timedelta(hours=1)).isoformat(),
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 422
+
+
+def test_patch_contest_student_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    _make_user(db_session, "alice")
+    token = _login(client, "alice")
+    resp = client.patch(
+        f"/api/contests/{contest.id}",
+        json={"title": "hacked"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 403
+
+
+def test_list_participants_own_teacher_200(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    alice = _make_user(db_session, "alice")
+    bob = _make_user(db_session, "bob")
+    db_session.add(ContestParticipant(contest_id=contest.id, user_id=alice.id))
+    db_session.add(ContestParticipant(contest_id=contest.id, user_id=bob.id))
+    db_session.commit()
+    token = _login(client, "prof")
+    resp = client.get(
+        f"/api/contests/{contest.id}/participants", headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 2
+    assert {p["username"] for p in body} == {"alice", "bob"}
+
+
+def test_list_participants_other_teacher_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    _make_user(db_session, "other", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    token = _login(client, "other")
+    resp = client.get(
+        f"/api/contests/{contest.id}/participants", headers=_auth(token)
+    )
+    assert resp.status_code == 403
+
+
+def test_add_participant_user_201(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    alice = _make_user(db_session, "alice")
+    token = _login(client, "prof")
+    resp = client.post(
+        f"/api/contests/{contest.id}/participants/user/{alice.id}",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    assert db_session.get(ContestParticipant, (contest.id, alice.id)) is not None
+
+
+def test_add_participant_user_duplicate_409(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    alice = _make_user(db_session, "alice")
+    db_session.add(ContestParticipant(contest_id=contest.id, user_id=alice.id))
+    db_session.commit()
+    token = _login(client, "prof")
+    resp = client.post(
+        f"/api/contests/{contest.id}/participants/user/{alice.id}",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 409
+
+
+def test_add_participant_class_bulk_201(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    cls = _make_class(db_session, teacher, code="C1")
+    alice = _make_user(db_session, "alice")
+    bob = _make_user(db_session, "bob")
+    db_session.add(ClassMember(class_id=cls.id, user_id=alice.id))
+    db_session.add(ClassMember(class_id=cls.id, user_id=bob.id))
+    db_session.commit()
+    token = _login(client, "prof")
+    resp = client.post(
+        f"/api/contests/{contest.id}/participants/class/{cls.id}",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["added"] == 2
+    assert db_session.get(ContestParticipant, (contest.id, alice.id)) is not None
+    assert db_session.get(ContestParticipant, (contest.id, bob.id)) is not None
+
+
+def test_add_participant_class_other_teacher_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    other = _make_user(db_session, "other", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    cls = _make_class(db_session, other, code="C2")
+    token = _login(client, "prof")
+    resp = client.post(
+        f"/api/contests/{contest.id}/participants/class/{cls.id}",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 403
+
+
+def test_contest_problems_crud(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    p1 = _make_problem(db_session, teacher, title="P1")
+    p2 = _make_problem(db_session, teacher, title="P2")
+    token = _login(client, "prof")
+
+    resp = client.post(
+        f"/api/contests/{contest.id}/contest-problems",
+        json={"problem_id": p1.id},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["order"] == 0
+    assert resp.json()["title"] == "P1"
+
+    resp = client.post(
+        f"/api/contests/{contest.id}/contest-problems",
+        json={"problem_id": p2.id},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    assert resp.json()["order"] == 1
+
+    resp = client.get(
+        f"/api/contests/{contest.id}/contest-problems", headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [p["problem_id"] for p in body] == [p1.id, p2.id]
+
+    resp = client.patch(
+        f"/api/contests/{contest.id}/contest-problems/{p1.id}",
+        json={"order": 1},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["order"] == 1
+
+    resp = client.delete(
+        f"/api/contests/{contest.id}/contest-problems/{p2.id}",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 204
+    assert db_session.get(ContestProblem, (contest.id, p2.id)) is None
+
+
+def test_contest_problems_duplicate_409(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    p1 = _make_problem(db_session, teacher, title="P1")
+    db_session.add(ContestProblem(contest_id=contest.id, problem_id=p1.id, order=0))
+    db_session.commit()
+    token = _login(client, "prof")
+    resp = client.post(
+        f"/api/contests/{contest.id}/contest-problems",
+        json={"problem_id": p1.id},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 409
+
+
+def test_contest_problems_student_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    contest = _make_contest(db_session, teacher, title="C1")
+    p1 = _make_problem(db_session, teacher, title="P1")
+    _make_user(db_session, "alice")
+    token = _login(client, "alice")
+    resp = client.post(
+        f"/api/contests/{contest.id}/contest-problems",
+        json={"problem_id": p1.id},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 403
+
+
 # --- Scoreboard -------------------------------------------------------------
 
 

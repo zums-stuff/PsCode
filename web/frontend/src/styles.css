@@ -222,3 +222,40 @@ th {
 .run-sample {
   margin: 0.75rem 0;
 }
+
+/* --- contest admin --- */
+
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-gray {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.status-green {
+  background: #dcfce7;
+  color: var(--ok);
+}
+
+.status-red {
+  background: #fee2e2;
+  color: var(--danger);
+}
+
+.form-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}

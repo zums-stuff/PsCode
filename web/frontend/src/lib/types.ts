@@ -82,3 +82,74 @@ export interface AssignmentSubmissionOut {
   steps: number | null;
   source: string;
 }
+
+export interface ContestListItem {
+  id: number;
+  title: string;
+  start_at: string;
+  end_at: string;
+  status: string;
+  scoring_mode: string;
+  teams_enabled: boolean;
+  is_registered: boolean;
+}
+
+export interface Contest {
+  id: number;
+  title: string;
+  start_at: string;
+  end_at: string;
+  scoring_mode: string;
+  teams_enabled: boolean;
+  created_by: number;
+}
+
+export interface ContestProblem {
+  contest_id: number;
+  problem_id: number;
+  order: number;
+  title: string;
+}
+
+export interface ContestTeam {
+  id: number;
+  contest_id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface ContestTeamMember {
+  team_id: number;
+  user_id: number;
+}
+
+export interface ContestParticipant {
+  user_id: number;
+  username: string;
+}
+
+export interface ContestScoreboardRow {
+  participant_id: string;
+  rank: number;
+  solves: number;
+  penalty: number;
+  points: number;
+  total_ac_cases: number;
+  problems: Record<
+    string,
+    {
+      solved: boolean;
+      solve_time_min: number;
+      wrong_attempts: number;
+      points: number;
+      best_ac_cases: number;
+      best_steps: number;
+      best_submission_id: string | null;
+    }
+  >;
+}
+
+export interface ContestScoreboard {
+  mode: string;
+  rows: ContestScoreboardRow[];
+}

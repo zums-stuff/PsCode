@@ -12,6 +12,9 @@ import AdminClasses from "./routes/admin/AdminClasses";
 import AdminClassDetail from "./routes/admin/AdminClassDetail";
 import AdminAssignmentNew from "./routes/admin/AdminAssignmentNew";
 import AdminAssignmentDetail from "./routes/admin/AdminAssignmentDetail";
+import AdminContests from "./routes/admin/AdminContests";
+import AdminContestNew from "./routes/admin/AdminContestNew";
+import AdminContestDetail from "./routes/admin/AdminContestDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +52,9 @@ export default function App() {
                 element={<AdminAssignmentNew />}
               />
               <Route path="assignments/:id" element={<AdminAssignmentDetail />} />
+              <Route path="contests" element={<AdminContests />} />
+              <Route path="contests/new" element={<AdminContestNew />} />
+              <Route path="contests/:id" element={<AdminContestDetail />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,0 +1,90 @@
+TASK 24 — Contests admin + live scoreboard view
+================================================
+Date: 2026-09-06
+Plan: .omo/plans/pseint-judge.md (todo 24, lines 303-309)
+Status: COMPLETE
+
+FILES
+-----
+Backend (web/api):
+- src/pseint_api/routes/contests.py (modified): PATCH /api/contests/{id}
+  (title/start_at/end_at only — scoring_mode/teams_enabled NOT editable),
+  GET/POST /api/contests/{id}/participants (user + class bulk),
+  GET/POST /api/contests/{id}/contest-problems, PATCH/DELETE
+  /api/contests/{id}/contest-problems/{problem_id} (order reorder).
+  Fixed max_order bug: func.max + `is None` check (Python `0 or -1` -> -1).
+- tests/test_api.py (modified): 14 new tests in `# --- Contest admin (todo 24) ---`
+  section (patch owner/other/admin/invalid-times/student, participants
+  list/add/duplicate-409/class-bulk/class-403, contest-problems CRUD/dup-409/student-403).
+
+Frontend (web/frontend):
+- src/lib/types.ts (modified): ContestListItem, Contest, ContestProblem,
+  ContestTeam, ContestTeamMember, ContestParticipant, ContestScoreboardRow,
+  ContestScoreboard.
+- src/i18n/es.ts (modified): all admin.contests.* keys (list, new, detail,
+  problems, participants, teams, scoreboard, statuses).
+- src/components/ContestStatusBadge.tsx (new): badge + exported contestStatus()
+  returning {status: upcoming|running|ended, label, color}.
+- src/components/PhaseAwareActions.tsx (new): clones children, disables them
+  while phase === "upcoming".
+- src/components/ProblemSetEditor.tsx (new): add via select, remove, up/down
+  reorder (two PATCHes per move).
+- src/components/ParticipantsPanel.tsx (new): add user / add class, list.
+- src/components/TeamsPanel.tsx (new): renders null when teams_enabled=false;
+  team CRUD + member add otherwise.
+- src/components/ContestScoreboard.tsx (new): CF (solves desc, penalty asc) and
+  IOI (total desc) tables; resolves names from participants + teams props.
+- src/routes/admin/AdminContests.tsx (new): list page (GET /api/contests).
+- src/routes/admin/AdminContestNew.tsx (new): create form (end > start check).
+- src/routes/admin/AdminContestDetail.tsx (new): metadata form (locked when
+  hasRuns), ProblemSetEditor, ParticipantsPanel, TeamsPanel, ContestScoreboard;
+  student + non-owner-teacher -> /403 guard.
+- src/App.tsx (modified): routes contests, contests/new, contests/:id.
+- src/routes/admin/AdminLayout.tsx (modified): nav link.
+- src/styles.css (modified): .status-badge, .status-gray/green/red, .form-row,
+  .hint.
+- test/admin-contests.test.tsx (new): 9 tests (list render, running badge,
+  TeamsPanel shown/hidden, PhaseAwareActions disable/enable, CF sort, IOI sort,
+  student /403, non-owner teacher /403).
+
+ACCEPTANCE ASSERTIONS (plan lines 303-309)
+------------------------------------------
+- /admin/contests list + new + detail pages: DONE (AdminContests,
+  AdminContestNew, AdminContestDetail).
+- CRUD + problem-set reorder: DONE (PATCH contest, contest-problems CRUD with
+  order reorder via up/down arrows; no DnD dependency).
+- Participants + teams: DONE (user/class add, team CRUD + members; TeamsPanel
+  hidden when teams_enabled=false).
+- Status badge: DONE (ContestStatusBadge, upcoming/running/ended).
+- Live scoreboard CF/IOI + teams mode: DONE (ContestScoreboard; team rows via
+  locked roster from existing GET /api/contests/{id}/scoreboard; names resolved
+  from participants/teams lists).
+- scoring_mode/teams_enabled immutable once verdicts exist: DONE (backend PATCH
+  rejects them outright; frontend locks fields when scoreboard has rows).
+- i18n keys added, none removed: DONE (es.ts single source, tsc catches dupes).
+- No new tables / no heavy deps: DONE (no migrations, no DnD lib).
+
+VERIFICATION COMMANDS (all green)
+---------------------------------
+Backend:
+$ cd web/api && ../.venv/bin/python -m pytest tests/test_api.py -k "contest" -q
+  22 passed
+$ cd web/api && ../.venv/bin/python -m pytest tests/ -q
+  175 passed
+$ cd web/api && ../.venv/bin/ruff check src tests/
+  All checks passed!
+$ cd web/api && ../.venv/bin/alembic check
+  No new upgrade operations detected.
+
+Frontend:
+$ cd web/frontend && npx vitest run test/admin-contests.test.tsx
+  9 passed
+$ cd web/frontend && npx vitest run
+  32 passed (5 files: lang-pseint 11, editor-mount 2, admin-problems 6,
+  admin-classes 6, admin-contests 9)
+$ cd web/frontend && npx tsc --noEmit
+  clean
+
+COMMIT
+------
+feat(web): contests admin

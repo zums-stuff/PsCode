@@ -14,11 +14,21 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..deps import get_current_user, get_db, require_teacher
-from ..models import Contest, ContestParticipant, ContestTeam, ContestTeamMember, User
+from ..models import (
+    Class,
+    ClassMember,
+    Contest,
+    ContestParticipant,
+    ContestProblem,
+    ContestTeam,
+    ContestTeamMember,
+    Problem,
+    User,
+)
 
 router = APIRouter(prefix="/api/contests")
 
@@ -214,3 +224,273 @@ def add_team_member(
     db.add(ContestTeamMember(team_id=team_id, user_id=req.user_id))
     db.commit()
     return {"team_id": team_id, "user_id": req.user_id}
+
+
+class ContestPatchRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+
+
+@router.patch("/{contest_id}", response_model=ContestOut)
+def patch_contest(
+    contest_id: int,
+    req: ContestPatchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """Update contest metadata (title/dates). Admin or owning teacher only.
+
+    scoring_mode / teams_enabled are intentionally NOT editable here — a
+    contest edit must never change persisted verdicts (plan todo 24).
+    """
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can edit this contest"
+        )
+    data = req.model_dump(exclude_unset=True)
+    if "start_at" in data and "end_at" in data:
+        if data["start_at"] >= data["end_at"]:
+            raise HTTPException(
+                status_code=422, detail="start_at must be before end_at"
+            )
+    elif "start_at" in data and data["start_at"] >= contest.end_at:
+        raise HTTPException(
+            status_code=422, detail="start_at must be before end_at"
+        )
+    elif "end_at" in data and contest.start_at >= data["end_at"]:
+        raise HTTPException(
+            status_code=422, detail="start_at must be before end_at"
+        )
+    for key, value in data.items():
+        setattr(contest, key, value)
+    db.commit()
+    return contest
+
+
+class ContestParticipantOut(BaseModel):
+    user_id: int
+    username: str
+
+
+@router.get("/{contest_id}/participants", response_model=list[ContestParticipantOut])
+def list_participants(
+    contest_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """List contest participants with usernames (admin or owning teacher)."""
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can view participants"
+        )
+    rows = db.execute(
+        select(ContestParticipant.user_id, User.username)
+        .join(User, User.id == ContestParticipant.user_id)
+        .where(ContestParticipant.contest_id == contest_id)
+        .order_by(User.username)
+    ).all()
+    return [
+        ContestParticipantOut(user_id=user_id, username=username)
+        for user_id, username in rows
+    ]
+
+
+@router.post(
+    "/{contest_id}/participants/user/{user_id}",
+    status_code=status.HTTP_201_CREATED,
+)
+def add_participant_user(
+    contest_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """Add an individual user as a contest participant (admin/owning teacher)."""
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can add participants"
+        )
+    if db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if db.get(ContestParticipant, (contest_id, user_id)) is not None:
+        raise HTTPException(
+            status_code=409, detail="User is already a participant"
+        )
+    db.add(ContestParticipant(contest_id=contest_id, user_id=user_id))
+    db.commit()
+    return {"contest_id": contest_id, "user_id": user_id}
+
+
+@router.post(
+    "/{contest_id}/participants/class/{class_id}",
+    status_code=status.HTTP_201_CREATED,
+)
+def add_participant_class(
+    contest_id: int,
+    class_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """Bulk-add all members of a class as contest participants."""
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can add participants"
+        )
+    cls = db.get(Class, class_id)
+    if cls is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if user.role != "admin" and cls.teacher_id != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can add this class"
+        )
+    member_ids = db.scalars(
+        select(ClassMember.user_id).where(ClassMember.class_id == class_id)
+    ).all()
+    added = 0
+    for member_id in member_ids:
+        if db.get(ContestParticipant, (contest_id, member_id)) is None:
+            db.add(ContestParticipant(contest_id=contest_id, user_id=member_id))
+            added += 1
+    db.commit()
+    return {"contest_id": contest_id, "class_id": class_id, "added": added}
+
+
+class ContestProblemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    contest_id: int
+    problem_id: int
+    order: int
+    title: str
+
+
+class ContestProblemAddRequest(BaseModel):
+    problem_id: int
+
+
+class ContestProblemPatchRequest(BaseModel):
+    order: int
+
+
+@router.get(
+    "/{contest_id}/contest-problems", response_model=list[ContestProblemOut]
+)
+def list_contest_problems(
+    contest_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List the contest's problem set ordered by ``order``."""
+    _get_contest_or_404(db, contest_id)
+    rows = db.execute(
+        select(ContestProblem, Problem.title)
+        .join(Problem, Problem.id == ContestProblem.problem_id)
+        .where(ContestProblem.contest_id == contest_id)
+        .order_by(ContestProblem.order, ContestProblem.problem_id)
+    ).all()
+    return [
+        ContestProblemOut(
+            contest_id=cp.contest_id,
+            problem_id=cp.problem_id,
+            order=cp.order,
+            title=title,
+        )
+        for cp, title in rows
+    ]
+
+
+@router.post(
+    "/{contest_id}/contest-problems",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ContestProblemOut,
+)
+def add_contest_problem(
+    contest_id: int,
+    req: ContestProblemAddRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """Add a problem to the contest (admin/owning teacher)."""
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can edit the problem set"
+        )
+    if db.get(Problem, req.problem_id) is None:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    if db.get(ContestProblem, (contest_id, req.problem_id)) is not None:
+        raise HTTPException(
+            status_code=409, detail="Problem is already in the contest"
+        )
+    max_order = db.scalar(
+        select(func.max(ContestProblem.order)).where(
+            ContestProblem.contest_id == contest_id
+        )
+    )
+    if max_order is None:
+        max_order = -1
+    cp = ContestProblem(
+        contest_id=contest_id, problem_id=req.problem_id, order=max_order + 1
+    )
+    db.add(cp)
+    db.commit()
+    title = db.get(Problem, req.problem_id).title
+    return ContestProblemOut(
+        contest_id=contest_id, problem_id=req.problem_id, order=cp.order, title=title
+    )
+
+
+@router.patch(
+    "/{contest_id}/contest-problems/{problem_id}",
+    response_model=ContestProblemOut,
+)
+def patch_contest_problem(
+    contest_id: int,
+    problem_id: int,
+    req: ContestProblemPatchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """Update a contest problem's ``order`` (reorder the problem set)."""
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can edit the problem set"
+        )
+    cp = db.get(ContestProblem, (contest_id, problem_id))
+    if cp is None:
+        raise HTTPException(status_code=404, detail="Problem not in contest")
+    cp.order = req.order
+    db.commit()
+    title = db.get(Problem, problem_id).title
+    return ContestProblemOut(
+        contest_id=contest_id, problem_id=problem_id, order=cp.order, title=title
+    )
+
+
+@router.delete(
+    "/{contest_id}/contest-problems/{problem_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_contest_problem(
+    contest_id: int,
+    problem_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+):
+    """Remove a problem from the contest (admin/owning teacher)."""
+    contest = _get_contest_or_404(db, contest_id)
+    if user.role != "admin" and contest.created_by != user.id:
+        raise HTTPException(
+            status_code=403, detail="Only the owning teacher can edit the problem set"
+        )
+    cp = db.get(ContestProblem, (contest_id, problem_id))
+    if cp is None:
+        raise HTTPException(status_code=404, detail="Problem not in contest")
+    db.delete(cp)
+    db.commit()
