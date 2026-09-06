@@ -221,3 +221,39 @@ export interface ForumPost {
   body: string;
   created_at: string;
 }
+
+/** Anticheat report pair (todo 39 → todo 25). */
+export interface AnticheatPair {
+  run_a_id: number;
+  run_b_id: number;
+  user_a_id: number;
+  user_a_username: string;
+  user_b_id: number;
+  user_b_username: string;
+  score: number;
+  scope: "class" | "contest";
+  flagged: boolean;
+}
+
+/** Pair detail (original sources + score). */
+export interface AnticheatPairDetail {
+  run_a: {
+    id: number;
+    user_id: number;
+    username: string;
+    problem_id: number;
+    kind: string;
+  };
+  run_b: {
+    id: number;
+    user_id: number;
+    username: string;
+    problem_id: number;
+    kind: string;
+  };
+  source_a: string;
+  source_b: string;
+  score: number;
+  flagged: boolean;
+  threshold: number;
+}

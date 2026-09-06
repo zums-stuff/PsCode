@@ -188,3 +188,37 @@ export function updateForumPost(
 export function deleteForumPost(postId: number): Promise<void> {
   return api.delete<void>(`/api/posts/${postId}`);
 }
+
+/** Anticheat pairs for a scope (todo 39 / todo 25). */
+export function listAnticheatPairs(
+  scope: "class" | "contest",
+  scopeId: number,
+  threshold?: number,
+): Promise<import("./types").AnticheatPair[]> {
+  const qs = new URLSearchParams({ scope, scope_id: String(scopeId) });
+  if (threshold !== undefined) qs.set("threshold", String(threshold));
+  return api.get<import("./types").AnticheatPair[]>(
+    `/api/admin/anticheat?${qs.toString()}`,
+  );
+}
+
+/** Pair diff payload (originals + score). */
+export function getAnticheatPair(
+  runAId: number,
+  runBId: number,
+): Promise<import("./types").AnticheatPairDetail> {
+  return api.get<import("./types").AnticheatPairDetail>(
+    `/api/admin/anticheat/pair/${runAId}/${runBId}`,
+  );
+}
+
+/** Update a class's anticheat threshold. */
+export function updateClassAnticheatThreshold(
+  classId: number,
+  threshold: number,
+): Promise<import("./types").ClassOut> {
+  return api.post<import("./types").ClassOut>(
+    `/api/admin/classes/${classId}/anticheat-threshold`,
+    { threshold },
+  );
+}

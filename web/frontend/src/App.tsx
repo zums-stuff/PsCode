@@ -23,6 +23,7 @@ import AdminAssignmentDetail from "./routes/admin/AdminAssignmentDetail";
 import AdminContests from "./routes/admin/AdminContests";
 import AdminContestNew from "./routes/admin/AdminContestNew";
 import AdminContestDetail from "./routes/admin/AdminContestDetail";
+import AdminAnticheat from "./routes/admin/AdminAnticheat";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,7 @@ export default function App() {
               <Route path="contests" element={<AdminContests />} />
               <Route path="contests/new" element={<AdminContestNew />} />
               <Route path="contests/:id" element={<AdminContestDetail />} />
+              <Route path="anticheat" element={<AdminAnticheat />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

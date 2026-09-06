@@ -401,4 +401,45 @@ export const es: Record<string, string> = {
   "forum.post.replyTo": "Respondiendo a",
   "forum.post.cancelReply": "Cancelar respuesta",
   "forum.post.error": "Error",
+
+  "admin.anticheat.title": "Reporte de anticheat",
+  "admin.anticheat.description":
+    "Visualiza pares de entregas con alta similitud dentro de una clase o concurso. Este reporte es solo informativo; no aplica penalizaciones automáticas.",
+  "admin.anticheat.scope.kind": "Alcance",
+  "admin.anticheat.scope.class": "Clase",
+  "admin.anticheat.scope.contest": "Concurso",
+  "admin.anticheat.scope.id": "ID del alcance",
+  "admin.anticheat.scope.apply": "Aplicar",
+  "admin.anticheat.scope.invalidId": "Ingresa un ID de alcance válido (número entero positivo).",
+  "admin.anticheat.threshold.label": "Umbral de anticheat",
+  "admin.anticheat.threshold.hint":
+    "Valor entre 0 y 1. Por defecto 0.85. Se aplica a esta clase.",
+  "admin.anticheat.threshold.invalid":
+    "El umbral debe estar entre 0 y 1.",
+  "admin.anticheat.threshold.error":
+    "No se pudo guardar el umbral.",
+  "admin.anticheat.threshold.saving": "Guardando…",
+  "admin.anticheat.threshold.save": "Guardar umbral",
+  "admin.anticheat.pairs.title": "Pares sospechosos",
+  "admin.anticheat.pairs.loading": "Cargando pares…",
+  "admin.anticheat.pairs.error": "No se pudieron cargar los pares.",
+  "admin.anticheat.pairs.empty": "No hay pares por encima del umbral.",
+  "admin.anticheat.pairs.emptyThreshold":
+    "No hay pares con similitud ≥ {threshold}.",
+  "admin.anticheat.pairs.sameTeamHint":
+    "Las entregas del mismo equipo se excluyen automáticamente.",
+  "admin.anticheat.pairs.export": "Exportar CSV",
+  "admin.anticheat.pairs.columns.runA": "Entrega A",
+  "admin.anticheat.pairs.columns.runB": "Entrega B",
+  "admin.anticheat.pairs.columns.score": "Similitud",
+  "admin.anticheat.pairs.columns.actions": "Acciones",
+  "admin.anticheat.pairs.viewDiff": "Ver diff",
+  "admin.anticheat.pairs.hideDiff": "Ocultar diff",
+  "admin.anticheat.diff.title": "Comparación de fuentes",
+  "admin.anticheat.diff.close": "Cerrar",
+  "admin.anticheat.diff.loading": "Cargando diff…",
+  "admin.anticheat.diff.error": "No se pudo cargar el diff.",
+  "admin.anticheat.diff.flagged": "marcado",
+  "admin.anticheat.diff.sourceA": "Fuente A",
+  "admin.anticheat.diff.sourceB": "Fuente B",
 };
