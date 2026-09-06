@@ -243,7 +243,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: migrate on clean DB → 0 errors, tables list matches models; failure: duplicate class code insert → IntegrityError asserted. Evidence .omo/evidence/task-16-pseint-judge.txt
   Commit: Y | feat(api): schema and migrations
 
-- [ ] 17. Auth: registration, login, JWT, roles
+- [x] 17. Auth: registration, login, JWT, roles
   What to do / Must NOT do: pwdlib argon2 hashing; register (username, display_name, password ≥8 chars, class_code → joins class; wrong code → 400); login → JWT access token 24h (python-jose or pyjwt); middleware dependency enforcing admin>teacher>student; teacher creation admin-only; password reset by admin (no emails). Must NOT implement refresh tokens, email, or password change email flows.
   Parallelization: Wave 3 | Blocked by: 16 | Blocks: 18
   References: draft D10, M13 (password policy); FastAPI security docs
@@ -251,7 +251,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: full register→login→authed GET /api/me; failure: student POST /api/problems → 403 body role required. Evidence .omo/evidence/task-17-pseint-judge.txt
   Commit: Y | feat(api): auth and roles
 
-- [ ] 18. REST API v1 + integration tests
+- [x] 18. REST API v1 + integration tests
   What to do / Must NOT do: routers for problems, test-cases (teacher), classes/codes, assignments, contests (+register participant, +teams CRUD when teams_enabled), runs (POST submit → enqueue; list history), validate (POST /api/validate {source} → {ok, errors:[{code,message,line,col}]} thin wrapper over engine validate from todo 7; consumed by todo 22 sample-run CE check and todo 29 inline errors; rate-limited + 64KB cap per todo 20), forums (threads/posts; contest-phase lock: teacher-only posting during live window, D15 + todo 33 phase-lock rule), similarity report endpoints (teacher), scoreboard GET (contest/assignment); Pydantic v2 schemas + status codes; submission flow: POST /api/runs (mode=assignment|contest|practice) → 202 {run_id} → worker (todo 35) → WS event (todo 19); assignment deadline rule: submissions after deadline → 422 ASSIGNMENT_CLOSED (teacher rejudge exempt); practice submissions never graded. Must NOT embed judging; API only enqueues.
   Parallelization: Wave 3 | Blocked by: 16,17 | Blocks: 19,20,22-26,27-33 | Can parallelize with: 15
   References: draft C5/D8/D14/D16, M12; REST conventions; httpx ASGI test patterns
@@ -259,7 +259,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: teacher creates problem+2 cases, student submits → 202, after worker finishes GET run → per-case results; failure: submit with source >64KB → 413. Evidence .omo/evidence/task-18-pseint-judge.txt
   Commit: Y | feat(api): REST v1
 
-- [ ] 19. WebSocket push for live results
+- [x] 19. WebSocket push for live results
   What to do / Must NOT do: /ws/submissions endpoint: JWT on handshake (query param token); events {type: submission|run, run_id, status, per_case:[...]} ordered by (run_id, case_index); reconnect with backoff + resume: on connect server replays last 20 submitted runs of the user (M8). Must NOT use SSE; must not multicast between users (only owner/teacher-watching-contest).
   Parallelization: Wave 3 | Blocked by: 18 | Blocks: 27-33 | Can parallelize with: 20
   References: draft M8/D12; starlette WebSocket + asyncio patterns

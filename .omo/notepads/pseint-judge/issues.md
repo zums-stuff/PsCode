@@ -92,3 +92,9 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **No engine `validate` module exists**: the plan's validate contract is served by a thin API-layer wrapper importing `pseint_engine.parser.parse` + `LexError`/`ParseError` directly (engine is editable-installed). Do NOT add a `validate.py` to engine/ — that would break the todo-7 module layout.
 - **Scoreboard penalty test initially wrong**: expected 40 but got 280 because runs were seeded at `now+10min` while `start_at = now-2h` (penalty is start-relative). Fixed by seeding at `start_at + timedelta(...)`.
 - **`test_delete_case` identity-map trap**: `db_session.get(TestCase, tc.id)` returned the stale cached row after the HTTP DELETE. Fixed with a fresh scalar select.
+
+## Todo 19 — WebSocket push for live results (2026-09-05)
+
+- **Test bug cost 3 red runs (all test-side, zero product-code bugs)**: (1) `portal.call` rejects kwargs → `contest_id=` TypeError; (2) reused event dict with run_id 1 for both broadcasts → connected user received run_id 1, not 2. The implementation was correct throughout; the failures were in how tests invoked the helper. Lesson: when simulating worker events, build a fresh event dict per broadcast with the correct run_id.
+- **`websocket.close(4408)` before accept in production**: TestClient propagates the close code, but a real ASGI server (uvicorn) responds to close-before-accept with an HTTP 403 (per ASGI spec) — the browser sees a failed handshake, not a 4408 close frame. The 4408 code is the documented test contract; the frontend (todo 27+) must treat handshake failure as "stale token".
+- **No issues in the product code**: all 14 WS tests passed after the test-side fixes; ruff clean; alembic check reports no drift (todo 19 adds no tables).
