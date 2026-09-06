@@ -1,0 +1,52 @@
+# Evidence — Todo 18: REST API v1 + integration tests
+
+**Date:** 2026-09-05
+**Commit:** feat(api): REST v1
+
+## Acceptance criteria (from .omo/plans/pseint-judge.md todo 18)
+
+- [x] `pytest tests/test_api.py -q` green with >120 assertions
+- [x] `ruff check src tests/` clean
+- [x] `alembic check` clean (no new tables — models.py from todo 16 unchanged)
+- [x] Full test suite green (`pytest tests/ -q`)
+- [x] One commit `feat(api): REST v1`
+
+## Verification output
+
+```
+$ ../../.venv/bin/python -m pytest tests/test_api.py -q
+89 passed, 2 warnings in 16.28s          (208 assert statements in test file)
+
+$ ../../.venv/bin/ruff check src tests/
+All checks passed!
+
+$ ../../.venv/bin/alembic check
+No new upgrade operations detected.
+
+$ ../../.venv/bin/python -m pytest tests/ -q
+124 passed, 2 warnings in 20.86s
+```
+
+## Deliverables
+
+- `web/api/tests/test_api.py` — 89 tests / 208 assertions across all 10 endpoint groups:
+  validate (4), problems (13), test_cases (9), classes (10), assignments (7),
+  contests (12), scoreboard (3), runs (13), forums (9), similarity (5).
+- `web/api/src/pseint_api/routes/problems.py` — problem CRUD, Literal enums, teacher-only writes.
+- `web/api/src/pseint_api/routes/test_cases.py` — per-problem case CRUD, exactly-one `is_sample` constraint (409).
+- `web/api/src/pseint_api/routes/classes.py` — admin create w/ unique 6-char code, teacher-own PATCH, code lookup.
+- `web/api/src/pseint_api/routes/assignments.py` — teacher-own-class create, role-scoped list.
+- `web/api/src/pseint_api/routes/contests.py` — create/list/register/teams (D16: at most one team per participant, 409).
+- `web/api/src/pseint_api/routes/scoreboard.py` — delegates to `pseint_judge.scoring.compute_scoreboard` (cf/ioi).
+- `web/api/src/pseint_api/routes/runs.py` — enqueue (202), 64KB cap (413), ASSIGNMENT_CLOSED (422), contest gate (403), best-effort Redis enqueue.
+- `web/api/src/pseint_api/routes/validate.py` — engine parse wrapper → `{ok, errors:[{code,message,line,col}]}`.
+- `web/api/src/pseint_api/routes/forums.py` — threads/posts, D15 contest phase lock (403 students during live contest, contest_id recorded).
+- `web/api/src/pseint_api/routes/similarity.py` — teacher-only report, threshold filter, same-team exclusion (D16).
+- `web/api/src/pseint_api/main.py` — all 11 routers wired.
+- `web/api/pyproject.toml` — added `redis>=5.0`.
+
+## Notes
+
+- No new tables: alembic check clean (16 tables from todo 16).
+- Redis enqueue is best-effort (try/except + warning); tests never require Redis.
+- Engine untouched (no validate module added — wrapper lives in the API layer).

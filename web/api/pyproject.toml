@@ -15,6 +15,7 @@ dependencies = [
     "pwdlib[argon2]>=0.2",
     "fastapi>=0.110",
     "python-jose[cryptography]>=3.3",
+    "redis>=5.0",
 ]
 
 [project.optional-dependencies]
