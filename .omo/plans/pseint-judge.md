@@ -349,7 +349,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: `Si x Entonces` without FinSi shows mark at line/col matching engine; failure: network down → transient warning, editor unaffected. Evidence .omo/evidence/task-29-pseint-judge.txt
   Commit: Y | feat(web): solve page with inline errors
 
-- [ ] 30. Practice sandbox (Run button)
+- [x] 30. Practice sandbox (Run button)
   What to do / Must NOT do: /practice + Solve-page Run: modal for sample input → POST /api/runs {mode:practice} (single runs route per todo 18; never graded) → WS result → output panel + metrics (steps, wall_ms) + error display; sample input = the problem's is_sample test-case input (todo 16), fallback problem.test_cases[0].input for public problems; quota errors (429) shown as friendly notice. Must NOT grade practice runs.
   Parallelization: Wave 5 | Blocked by: 29,19 | Blocks: 31
   References: draft D8 (practice mode), M13 (run quotas)
