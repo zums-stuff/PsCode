@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1.7
+# Worker image — runs ONE PseInt submission per container with all its test
+# cases inside, M2 lazy rules enforced in-container (todo 34).
+#
+# Hardening contract (matches scripts/run_sandboxed.py):
+#   * python:3.11-slim — small base, no curl/wget installed
+#   * pseint-engine + pseint-judge installed (judge not strictly needed inside
+#     the container today but the plan lists it and the image is the worker
+#     sandbox, so it's available for future in-container judging work)
+#   * USER 65534:65534 — non-root
+#   * /tmp is a tmpfs in the wrapper (--tmpfs /tmp), rootfs is read-only
+#   * ENTRYPOINT is a Python script (no bash dependency)
+#
+# Build:
+#   docker build -f infra/Dockerfile.worker -t pseint-judge-worker:latest .
+#
+# Run (via the wrapper — do NOT invoke docker run directly):
+#   python scripts/run_sandboxed.py < program.psc
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Engine + judge (paths are relative to the build context = repo root).
+# Both are pip-installed editable-free (regular install) to keep the image
+# self-contained; no source mounts.
+COPY engine/ /app/engine/
+COPY judge/ /app/judge/
+
+RUN pip install --no-cache-dir /app/engine /app/judge \
+    && pip cache purge \
+    && rm -rf /app/engine /app/judge /root/.cache
+
+# Entrypoint reads the program source from stdin, drops it into /tmp/source.psc
+# (tmpfs in the wrapper), runs the engine with --report to /tmp/report.json,
+# then streams program stdout followed by a sentinel + the JSON report on
+# the container's stdout so the wrapper can split the stream without needing
+# `docker cp` or any post-run attach.
+COPY infra/entrypoint.py /app/entrypoint.py
+RUN chmod 0555 /app/entrypoint.py
+
+USER 65534:65534
+WORKDIR /home/pseint
+
+ENTRYPOINT ["python", "/app/entrypoint.py"]
