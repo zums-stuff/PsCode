@@ -50,3 +50,35 @@ export interface ValidateResult {
   ok: boolean;
   errors: { code: string; message: string; line: number; col: number }[];
 }
+
+export interface ClassOut {
+  id: number;
+  name: string;
+  code: string;
+  teacher_id: number;
+  anticheat_threshold: number;
+}
+
+export interface ClassMemberOut {
+  user_id: number;
+  username: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface AssignmentListItem {
+  id: number;
+  problem_id: number;
+  deadline: string;
+  status: string;
+  best_verdict: string | null;
+  best_steps: number | null;
+}
+
+export interface AssignmentSubmissionOut {
+  user_id: number;
+  username: string;
+  best_verdict: string | null;
+  steps: number | null;
+  source: string;
+}

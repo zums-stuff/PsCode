@@ -1,0 +1,111 @@
+Task 23 — Classes, assignments, submissions admin
+==================================================
+Date: 2026-09-05
+Plan ref: .omo/plans/pseint-judge.md lines 295-301 (Wave 4, C3)
+Commit: feat(web): classes and assignments admin
+
+SCOPE
+-----
+Teacher/admin class management UI: /admin/classes list (join codes with
+copy-to-clipboard, open links, delete), /admin/classes/new (admin-only create
+form), /admin/classes/:id (inline rename, join code, members section,
+assignments table with problem titles + submission counts, new-assignment
+link), /admin/classes/:id/assignments/new (problem select + deadline),
+/admin/assignments/:id (per-student best submissions table with expandable
+read-only source view + rejudge via POST /api/runs). Ownership guard: a
+teacher opening another teacher's class is redirected to /403; students are
+redirected to /403 on the assignment detail.
+
+Backend addition (the ONLY web/api change allowed by the brief):
+GET /api/assignments/{id}/submissions in routes/assignments.py — per-student
+best run (VERDICT_PRIORITY max, fewest steps tiebreak) among runs with a
+summary_verdict, visible to the owning teacher or admin only (404 unknown
+assignment, 403 non-owning teacher).
+
+Files created/modified:
+  web/api/src/pseint_api/routes/assignments.py (MODIFIED: submissions endpoint)
+  web/api/tests/test_api.py (MODIFIED: _seed_run steps/assignment params + 5 tests)
+  web/frontend/src/lib/types.ts (ClassOut, ClassMemberOut, AssignmentListItem,
+    AssignmentSubmissionOut)
+  web/frontend/src/lib/api.ts (getAssignmentSubmissions helper)
+  web/frontend/src/i18n/es.ts (admin.classes.* + admin.assignments.* keys)
+  web/frontend/src/components/{ClassCodeDisplay,MemberList,SourceView,
+    AssignmentSubmissionsTable}.tsx (NEW)
+  web/frontend/src/routes/admin/{AdminClasses,AdminClassDetail,
+    AdminAssignmentNew,AdminAssignmentDetail}.tsx (NEW)
+  web/frontend/src/App.tsx (5 new routes under /admin)
+  web/frontend/src/routes/admin/AdminLayout.tsx (Clases nav link)
+  web/frontend/test/admin-classes.test.tsx (NEW, 6 tests)
+  web/frontend/test/setup.ts (navigator.clipboard polyfill)
+
+NOT modified: engine/, judge/, infra/, web/frontend/src/lang/, and the
+web/api routes problems/test_cases/classes/contests/runs/validate/forums/
+similarity/scoreboard/listings/auth (per brief).
+
+VERIFICATION
+------------
+1) Backend TDD: ../../.venv/bin/python -m pytest tests/test_api.py -q -k
+   assignment_submissions
+   -> red: 4 failed (endpoint missing; 404 test passed trivially)
+   -> green after implementation: 5 passed
+   Tests: teacher_200 (alice WA/20 then AC/10 -> best AC/10; bob WA/5),
+   admin_200, student_403, other_teacher_403, not_found_404.
+
+2) Full backend: ../../.venv/bin/python -m pytest tests/ -q
+   -> 161 passed, 2 warnings (pre-existing deprecations)
+
+3) ../../.venv/bin/ruff check src tests/ -> All checks passed!
+   (one E501 fixed: decorator line >88 cols)
+
+4) ../../.venv/bin/alembic check -> No new upgrade operations detected
+   (no schema change; endpoint queries existing tables)
+
+5) Frontend TDD: npx vitest run test/admin-classes.test.tsx
+   -> red: 1 failed (imports missing) then 1 failed (source-expand assertion
+      vs CodeMirror token spans) -> green: 6 passed
+   Tests: class list render, clipboard copy, class detail (rename form +
+   code + assignments table with resolved problem title + status), teacher B
+   on teacher A's class -> /403, submissions table + rejudge POST /api/runs
+   (body {problem_id, source, mode: "assignment", assignment_id}), student on
+   assignment detail -> /403.
+
+6) npx tsc --noEmit -> exit 0, zero diagnostics.
+
+7) Full suite: npx vitest run -> Test Files 4 passed (4) | Tests 23 passed (23)
+   (pre-existing lang-pseint 11 + editor-mount 2 + admin-problems 6 stay
+   green; new 6).
+
+QA SCENARIOS (plan)
+-------------------
+- happy: teacher A opens class 1 -> rename form, join code, assignments with
+  problem titles, submissions per student, rejudge re-POSTs the run.
+  Covered by detail + submissions tests (mocked fetch).
+- failure: teacher B opens teacher A's class -> /403. Covered by test 4
+  (asserts the /403 route renders, and no assignments fetch fires).
+- student on assignment detail -> /403 before any fetch. Covered by test 6
+  (mock has zero handlers; a fetch would throw and fail the test).
+
+DEVIATIONS / NOTES
+------------------
+- API gaps (documented in issues.md, follow-up API todos needed):
+  * No GET /api/classes/{id} (only /{code} string) -> class loaded from the
+    GET /api/classes list and found by id.
+  * No class-members endpoint -> MemberList is presentational, fed empty
+    data (members self-register via the join code; no admin view exists).
+  * AssignmentListItem has no class_id/problem_title/submission_count ->
+    titles resolved from GET /api/problems, counts from per-assignment
+    submissions calls; per-class filtering of the assignments list is
+    impossible on the frontend (all assignments shown).
+  * No DELETE /api/classes/{id} -> delete button wired, error surfaced
+    inline (todo-22 precedent).
+- Rejudge reuses POST /api/runs with {problem_id, source, mode:
+  "assignment", assignment_id} — teacher/admin are exempt from
+  ASSIGNMENT_CLOSED, so rejudge works after the deadline.
+- SourceView is a read-only CodeMirror EditorView (editable.of(false) +
+  pseint() + lineWrapping); jsdom needs the navigator.clipboard polyfill
+  added to test/setup.ts (Storage/ResizeObserver/rAF/scrollIntoView already
+  there).
+- CodeMirror splits source text across token spans, so tests assert on the
+  .source-view container's textContent, not a single-element text match.
+- React Router v6 future-flag warnings on stderr are cosmetic (same as
+  todo 22).

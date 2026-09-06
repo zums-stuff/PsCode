@@ -8,6 +8,10 @@ import NotFound from "./routes/NotFound";
 import AdminLayout from "./routes/admin/AdminLayout";
 import AdminProblems from "./routes/admin/AdminProblems";
 import AdminProblemDetail from "./routes/admin/AdminProblemDetail";
+import AdminClasses from "./routes/admin/AdminClasses";
+import AdminClassDetail from "./routes/admin/AdminClassDetail";
+import AdminAssignmentNew from "./routes/admin/AdminAssignmentNew";
+import AdminAssignmentDetail from "./routes/admin/AdminAssignmentDetail";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +41,14 @@ export default function App() {
               <Route path="problems" element={<AdminProblems />} />
               <Route path="problems/new" element={<AdminProblemDetail />} />
               <Route path="problems/:id" element={<AdminProblemDetail />} />
+              <Route path="classes" element={<AdminClasses />} />
+              <Route path="classes/new" element={<AdminClassDetail />} />
+              <Route path="classes/:id" element={<AdminClassDetail />} />
+              <Route
+                path="classes/:id/assignments/new"
+                element={<AdminAssignmentNew />}
+              />
+              <Route path="assignments/:id" element={<AdminAssignmentDetail />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

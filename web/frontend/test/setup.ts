@@ -65,3 +65,15 @@ if (typeof globalThis.requestAnimationFrame === "undefined") {
 if (typeof Element.prototype.scrollIntoView !== "function") {
   Element.prototype.scrollIntoView = () => {};
 }
+
+/**
+ * jsdom does not implement the Clipboard API (navigator.clipboard is
+ * undefined). ClassCodeDisplay copies via navigator.clipboard.writeText;
+ * tests spy on it, so a minimal polyfill keeps the property defined.
+ */
+if (typeof navigator.clipboard === "undefined") {
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: async () => {} },
+    configurable: true,
+  });
+}

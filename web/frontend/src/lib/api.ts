@@ -59,3 +59,12 @@ export const api = {
   patch: <T>(path: string, body?: unknown): Promise<T> => request<T>("PATCH", path, body),
   delete: <T>(path: string): Promise<T> => request<T>("DELETE", path),
 };
+
+/** Per-student best runs on an assignment (owning teacher or admin only). */
+export function getAssignmentSubmissions(
+  assignmentId: number,
+): Promise<import("./types").AssignmentSubmissionOut[]> {
+  return api.get<import("./types").AssignmentSubmissionOut[]>(
+    `/api/assignments/${assignmentId}/submissions`,
+  );
+}

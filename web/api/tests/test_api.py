@@ -249,6 +249,8 @@ def _seed_run(
     created_at: datetime | None = None,
     verdict: str | None = None,
     case_verdicts: list[str] | None = None,
+    steps: int = 10,
+    assignment: Assignment | None = None,
 ) -> Run:
     run = Run(
         user_id=user.id,
@@ -256,10 +258,11 @@ def _seed_run(
         kind=kind,
         status="done" if verdict is not None else "queued",
         summary_verdict=verdict,
-        steps=10 if verdict is not None else None,
+        steps=steps if verdict is not None else None,
         wall_ms=5 if verdict is not None else None,
         source=VALID_SOURCE,
         contest_id=contest.id if contest is not None else None,
+        assignment_id=assignment.id if assignment is not None else None,
         created_at=created_at or datetime.now(UTC),
     )
     db.add(run)
@@ -891,6 +894,110 @@ def test_list_assignments_teacher_sees_own(client, db_session):
     body = resp.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == mine.id
+
+
+# --- Assignment submissions (todo 23) ---------------------------------------
+
+
+def test_assignment_submissions_teacher_200(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    alice = _make_user(db_session, "alice")
+    bob = _make_user(db_session, "bob")
+    cls = _make_class(db_session, teacher, code="C1")
+    db_session.add(ClassMember(class_id=cls.id, user_id=alice.id))
+    db_session.add(ClassMember(class_id=cls.id, user_id=bob.id))
+    db_session.commit()
+    problem = _make_problem(db_session, teacher)
+    assignment = _make_assignment(db_session, cls, problem)
+    # alice: WA/20 then AC/10 -> best AC/10 (verdict priority, then steps)
+    _seed_run(
+        db_session, alice, problem, kind="assignment", assignment=assignment,
+        verdict="WA", case_verdicts=["WA"], steps=20,
+    )
+    _seed_run(
+        db_session, alice, problem, kind="assignment", assignment=assignment,
+        verdict="AC", case_verdicts=["AC"], steps=10,
+    )
+    # bob: WA/5 only -> best WA/5
+    _seed_run(
+        db_session, bob, problem, kind="assignment", assignment=assignment,
+        verdict="WA", case_verdicts=["WA"], steps=5,
+    )
+    token = _login(client, "prof")
+    resp = client.get(
+        f"/api/assignments/{assignment.id}/submissions", headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 2
+    by_user = {row["user_id"]: row for row in body}
+    assert by_user[alice.id]["username"] == "alice"
+    assert by_user[alice.id]["best_verdict"] == "AC"
+    assert by_user[alice.id]["steps"] == 10
+    assert by_user[alice.id]["source"] == VALID_SOURCE
+    assert by_user[bob.id]["username"] == "bob"
+    assert by_user[bob.id]["best_verdict"] == "WA"
+    assert by_user[bob.id]["steps"] == 5
+
+
+def test_assignment_submissions_admin_200(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    alice = _make_user(db_session, "alice")
+    cls = _make_class(db_session, teacher, code="C1")
+    db_session.add(ClassMember(class_id=cls.id, user_id=alice.id))
+    db_session.commit()
+    problem = _make_problem(db_session, teacher)
+    assignment = _make_assignment(db_session, cls, problem)
+    _seed_run(
+        db_session, alice, problem, kind="assignment", assignment=assignment,
+        verdict="AC", case_verdicts=["AC"],
+    )
+    _make_user(db_session, "admin", role="admin")
+    token = _login(client, "admin")
+    resp = client.get(
+        f"/api/assignments/{assignment.id}/submissions", headers=_auth(token)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["best_verdict"] == "AC"
+
+
+def test_assignment_submissions_student_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    alice = _make_user(db_session, "alice")
+    cls = _make_class(db_session, teacher, code="C1")
+    db_session.add(ClassMember(class_id=cls.id, user_id=alice.id))
+    db_session.commit()
+    problem = _make_problem(db_session, teacher)
+    assignment = _make_assignment(db_session, cls, problem)
+    token = _login(client, "alice")
+    resp = client.get(
+        f"/api/assignments/{assignment.id}/submissions", headers=_auth(token)
+    )
+    assert resp.status_code == 403
+
+
+def test_assignment_submissions_other_teacher_403(client, db_session):
+    teacher = _make_user(db_session, "prof", role="teacher")
+    _make_user(db_session, "other", role="teacher")
+    cls = _make_class(db_session, teacher, code="C1")
+    problem = _make_problem(db_session, teacher)
+    assignment = _make_assignment(db_session, cls, problem)
+    token = _login(client, "other")
+    resp = client.get(
+        f"/api/assignments/{assignment.id}/submissions", headers=_auth(token)
+    )
+    assert resp.status_code == 403
+
+
+def test_assignment_submissions_not_found_404(client, db_session):
+    _make_user(db_session, "prof", role="teacher")
+    token = _login(client, "prof")
+    resp = client.get(
+        "/api/assignments/9999/submissions", headers=_auth(token)
+    )
+    assert resp.status_code == 404
 
 
 # --- Contests ---------------------------------------------------------------

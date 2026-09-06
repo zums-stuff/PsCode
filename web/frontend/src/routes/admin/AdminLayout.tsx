@@ -18,6 +18,7 @@ export default function AdminLayout() {
         <span className="admin-brand">{t("app.title")}</span>
         <nav>
           <Link to="/admin/problems">{t("admin.problems.title")}</Link>
+          <Link to="/admin/classes">{t("admin.classes.title")}</Link>
         </nav>
         <span className="admin-user">
           {user?.display_name} ({user?.role})
