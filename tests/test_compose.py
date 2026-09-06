@@ -318,6 +318,23 @@ def test_caddyfile_has_security_headers() -> None:
     assert "Referrer-Policy" in text
 
 
+def test_caddyfile_has_hsts_scoped_to_https() -> None:
+    """HSTS (todo 40) must be emitted only on HTTPS responses.
+
+    A misconfigured DOMAIN that accidentally serves HSTS over plain HTTP
+    would brick dev; the Caddyfile scopes the directive to a ``@https``
+    matcher so it is absent in LOCAL mode.
+    """
+    text = CADDYFILE_PATH.read_text()
+    assert "Strict-Transport-Security" in text, (
+        "Caddyfile must declare Strict-Transport-Security for production"
+    )
+    assert "@https" in text, (
+        "HSTS must be gated by an @https matcher so it only fires when "
+        "Caddy terminates TLS (DOMAIN set); LOCAL HTTP must NOT emit HSTS"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dockerfiles — frontend build uses npm run build
 # ---------------------------------------------------------------------------
