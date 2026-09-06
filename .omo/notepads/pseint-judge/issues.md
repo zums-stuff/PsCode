@@ -87,3 +87,8 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **Test isolation gap in the auth test file**: the session-scoped test DB + TestClient commits meant `test_register_with_invalid_class_code_400` got 409 (alice already registered by the previous test) instead of 400. Fixed with an autouse per-test truncate fixture (`reversed(Base.metadata.sorted_tables)` deletes). Not a product bug — a test-harness gap.
 - **Brief's SECRET_KEY placement would not have worked**: the continuation brief said to add `monkeypatch.setenv("SECRET_KEY", ...)` inside the test_engine fixture's try block, but `monkeypatch.undo()` in the `finally` runs before any test executes, so the key would be gone at request time. Used a session-scoped autouse fixture instead (documented in learnings).
 - **StarletteDeprecationWarning**: `fastapi.testclient` warns that httpx is deprecated in favor of httpx2. Cosmetic; no action taken (todo 18+ may revisit).
+## Todo 18 — REST API v1 (2026-09-05)
+
+- **No engine `validate` module exists**: the plan's validate contract is served by a thin API-layer wrapper importing `pseint_engine.parser.parse` + `LexError`/`ParseError` directly (engine is editable-installed). Do NOT add a `validate.py` to engine/ — that would break the todo-7 module layout.
+- **Scoreboard penalty test initially wrong**: expected 40 but got 280 because runs were seeded at `now+10min` while `start_at = now-2h` (penalty is start-relative). Fixed by seeding at `start_at + timedelta(...)`.
+- **`test_delete_case` identity-map trap**: `db_session.get(TestCase, tc.id)` returned the stale cached row after the HTTP DELETE. Fixed with a fresh scalar select.
