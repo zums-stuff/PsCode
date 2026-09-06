@@ -1,0 +1,65 @@
+Task 31 — Results + history pages
+============================================
+Date: 2026-09-06
+Status: DONE
+
+Files created:
+  - web/frontend/src/components/VerdictBadge.tsx          (verdict pill; AC/WA/TLE/RE/CE + queued/running/done/failed; reuses .status-* CSS)
+  - web/frontend/src/components/BestBadge.tsx             ("Mejor" pill; client-side assignment-best)
+  - web/frontend/src/components/RunDetailModal.tsx        (modal: summary verdict + per-case table w/ input/expected/diff_line, source viewer when source prop present; MUST NOT render expected_output when null)
+  - web/frontend/src/routes/Submissions.tsx               (/submissions: paginated runs table, WS refetch, retry button on status=failed, BestBadge computed client-side)
+  - web/frontend/src/routes/ProblemResults.tsx            (/problem/:id/results: filtered paginated runs table, same row shape, no problem column)
+  - web/frontend/test/results.test.tsx                    (11 tests, all green)
+
+Files modified:
+  - web/frontend/src/App.tsx                              (+/submissions + /problem/:id/results routes, swap Placeholder for real Submissions)
+  - web/frontend/src/i18n/es.ts                           (+39 results.* keys, append-only)
+  - web/frontend/src/lib/api.ts                           (+getRuns(page, size, problemId?), +getRunDetail(runId) helpers)
+  - web/frontend/src/lib/types.ts                         (+RunDetailCaseOut, +RunDetailResponse)
+  - web/frontend/src/styles.css                           (+.run-detail-*/.pagination CSS, reuses .status-* classes from styles.css)
+
+API contract (backend unchanged — commit b7d2748):
+  GET /api/runs?page=&size=&problem_id=    -> { items: RunOut[], page, size, total }
+  GET /api/runs/{id}/detail                 -> { run: RunOut, test_cases: RunDetailCaseOut[] }
+  POST /api/runs                            -> { run_id } (reused for retry)
+
+Hidden-case masking is enforced server-side (plan MUST NOT). Frontend renders
+"Oculto" only when expected_output is null (server-authoritative).
+
+Source is not exposed by /api/runs endpoints; RunDetailModal accepts an optional
+`source` prop and renders the SourceView only when present. Submissions and
+ProblemResults do not pass source (none available). Source fetch is documented
+as an API gap; future todo may extend RunOut.
+
+Retry button: shows ONLY when status === "failed"; click re-POSTs /api/runs
+with the same problem_id / kind / assignment_id / contest_id. Empty source is
+re-enqueued — students re-paste their code via the solve page.
+
+BestBadge: client-side computation over the visible page only (plan M7: AC >
+WA > TLE > RE > CE, tiebreak min steps, grouped by (problem_id, assignment_id);
+practice runs excluded).
+
+WS live-update: useRunSocket connection on mount; any run event invalidates the
+"student" / "runs" / "problem-runs" query keys.
+
+Red runs: 9 (test-side; see issues.md — #1 collisions + race between initial
+fetch and getByText, route handler keys with "GET *" wildcard, single-element
+text matcher against multi-row "#N" cells).
+
+Acceptance criteria:
+  - [x] npx vitest run test/results.test.tsx → 11/11 passed
+  - [x] npx tsc --noEmit → clean
+  - [x] npx vitest run → 62/62 passed (9 files; +11 new tests for results)
+  - [x] ../../.venv/bin/ruff check web/api/src web/api/tests → clean (backend unchanged)
+
+QA scenarios:
+  - [x] paginated table renders, Prev/Next page navigate
+  - [x] RunDetailModal opens from row click; per-case verdict + steps + wall_ms + input + expected
+  - [x] hidden case renders "Oculto" instead of expected_output (plan MUST NOT)
+  - [x] WA diff_line shown as "Línea que difiere: N" (safe subset: line number only)
+  - [x] BestBadge on assignment-best run only (highest verdict, fewest steps)
+  - [x] practice runs never marked best
+  - [x] Retry button ONLY on status=failed rows; click POSTs /api/runs with same problem context
+  - [x] WS run event invalidates the runs query (refetch on the live socket)
+
+Commit: feat(web): results and history pages

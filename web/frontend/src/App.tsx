@@ -9,6 +9,8 @@ import StudentLayout from "./routes/StudentLayout";
 import Problems from "./routes/student/Problems";
 import Placeholder from "./routes/student/Placeholder";
 import Solve from "./routes/Solve";
+import Submissions from "./routes/Submissions";
+import ProblemResults from "./routes/ProblemResults";
 import AdminLayout from "./routes/admin/AdminLayout";
 import AdminProblems from "./routes/admin/AdminProblems";
 import AdminProblemDetail from "./routes/admin/AdminProblemDetail";
@@ -45,8 +47,9 @@ export default function App() {
             >
               <Route index element={<Problems />} />
               <Route path="problem/:id" element={<Solve />} />
+              <Route path="problem/:id/results" element={<ProblemResults />} />
               <Route path="practice" element={<Placeholder i18nKey="student.practice" />} />
-              <Route path="submissions" element={<Placeholder i18nKey="student.submissions" />} />
+              <Route path="submissions" element={<Submissions />} />
               <Route path="forum" element={<Placeholder i18nKey="student.forum" />} />
               <Route path="contests" element={<Placeholder i18nKey="student.contests" />} />
               <Route path="contest/:id" element={<Placeholder i18nKey="student.contest" />} />

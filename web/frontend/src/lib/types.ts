@@ -177,6 +177,27 @@ export interface RunDetailOut extends RunOut {
   test_results: TestResultOut[];
 }
 
+/** One case of GET /api/runs/{id}/detail (todo 31 hidden-case masking). */
+export interface RunDetailCaseOut {
+  case_index: number;
+  verdict: string;
+  steps: number | null;
+  wall_ms: number | null;
+  output: string | null;
+  error: string | null;
+  /** Truncated to 80 chars + '...' for hidden cases. */
+  input: string | null;
+  /** null when the case is hidden (todo 31 MUST NOT). */
+  expected_output: string | null;
+  /** 1-indexed first differing line for WA cases (safe subset: line only). */
+  diff_line: number | null;
+}
+
+export interface RunDetailResponse {
+  run: RunOut;
+  test_cases: RunDetailCaseOut[];
+}
+
 export interface ContestScoreboard {
   mode: string;
   rows: ContestScoreboardRow[];

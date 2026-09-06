@@ -98,3 +98,25 @@ export function submitPracticeRun(
     stdin,
   });
 }
+
+/** List paginated runs (todo 31 submissions + history). */
+export function getRuns(
+  page: number,
+  size: number,
+  problemId?: number,
+): Promise<import("./types").Page<import("./types").RunOut>> {
+  const qs = new URLSearchParams({ page: String(page), size: String(size) });
+  if (problemId !== undefined) qs.set("problem_id", String(problemId));
+  return api.get<import("./types").Page<import("./types").RunOut>>(
+    `/api/runs?${qs.toString()}`,
+  );
+}
+
+/** Run + per-case detail (todo 31 hidden-case masking). */
+export function getRunDetail(
+  runId: number,
+): Promise<import("./types").RunDetailResponse> {
+  return api.get<import("./types").RunDetailResponse>(
+    `/api/runs/${runId}/detail`,
+  );
+}

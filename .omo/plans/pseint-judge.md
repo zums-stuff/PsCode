@@ -357,7 +357,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: `Leer n; Escribir n*2` with "21" outputs 42; failure: step limit (infinite Mientras) → TLE(step) message w/ suggested fix. Evidence .omo/evidence/task-30-pseint-judge.txt
   Commit: Y | feat(web): practice sandbox
 
-- [~] 31. Results + history pages
+- [x] 31. Results + history pages
   What to do / Must NOT do: /submissions and /problem/:id/results: per-case table (verdict badge, steps, wall_ms), source viewer, assignment "best" badge (M7), pagination; WS live-updates open run; retry button for failed transport (infra) only. Must NOT allow student to see expected outputs of hidden cases.
   Parallelization: Wave 5 | Blocked by: 29 | Blocks: (wave gate) | Can parallelize with: 32,33
   References: draft M7/D8; run/test_results schema from todo 16
