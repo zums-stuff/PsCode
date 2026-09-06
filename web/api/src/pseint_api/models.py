@@ -264,6 +264,7 @@ class Run(Base):
     steps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     wall_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(Text, nullable=False)
+    stdin: Mapped[str | None] = mapped_column(Text, nullable=True)
     assignment_id: Mapped[int | None] = mapped_column(
         ForeignKey("assignments.id"), nullable=True
     )

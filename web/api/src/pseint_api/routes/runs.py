@@ -45,6 +45,7 @@ class RunCreateRequest(BaseModel):
     mode: Literal["practice", "assignment", "contest"]
     assignment_id: int | None = None
     contest_id: int | None = None
+    stdin: str | None = None
 
 
 class TestResultOut(BaseModel):
@@ -137,6 +138,7 @@ def create_run(
         kind=req.mode,
         status="queued",
         source=req.source,
+        stdin=req.stdin if req.stdin else None,
     )
 
     if req.mode == "assignment":

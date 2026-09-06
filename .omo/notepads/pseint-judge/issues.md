@@ -137,3 +137,9 @@ _Auto-scaffolded by /start-work. Append new entries below - never overwrite._
 - **React state flush not awaited before submit click**: `view.dispatch` fires onChange synchronously, but React's `setSource` batches. `fireEvent.click(Enviar)` read the stale empty source. Added `await new Promise(r => setTimeout(r, 0))` yield. 1 red run.
 - **Duplicate "AC" text in results pane**: `summary_verdict: "AC"` + `test_results[0].verdict: "AC"` → `getByText("AC")` throws "multiple elements". Fixed with `getAllByText("AC").length > 0`. 1 red run.
 - **`RunDetailOut` type missing from types.ts**: the solve route imports it but it wasn't defined — only `RunOut` existed. Added `RunDetailOut extends RunOut { test_results: TestResultOut[] }` and `TestResultOut`. Compile error, not a runtime issue.
+
+## Todo 30 — Practice sandbox (Run button) (2026-09-06)
+
+- **No issues in product code**: all 6 frontend practice tests + 2 backend stdin tests passed on the first green run after implementation; tsc clean; full frontend suite 51/51; full backend suite 177/177; ruff clean; alembic check clean after `upgrade head`.
+- **alembic check "Target database is not up to date" on first run**: expected — the new `add_run_stdin` migration existed but wasn't applied to the local `pseint` DB. `alembic upgrade head` applied it; `check` then reported no drift. The test DB migrates to head automatically via the session fixture, so backend tests were green before the local DB was upgraded.
+- **Test-side noise only**: the CodeMirror linter's RectangleMarker calls `getClientRects` (undefined in jsdom) → stderr TypeError in practice tests; cosmetic, tests pass. Same class of noise as solve.test.tsx.

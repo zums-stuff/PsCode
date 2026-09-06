@@ -1849,6 +1849,43 @@ def test_practice_run_has_no_test_results(client, db_session):
     assert results == []
 
 
+def test_practice_run_with_stdin_stored(client, db_session):
+    _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    problem = _make_problem(db_session, teacher)
+    token = _login(client, "alice")
+    resp = client.post(
+        "/api/runs",
+        json={
+            "problem_id": problem.id,
+            "source": VALID_SOURCE,
+            "mode": "practice",
+            "stdin": "21\n",
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 202
+    run = db_session.get(Run, resp.json()["run_id"])
+    assert run is not None
+    assert run.stdin == "21\n"
+
+
+def test_practice_run_without_stdin_is_null(client, db_session):
+    _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    problem = _make_problem(db_session, teacher)
+    token = _login(client, "alice")
+    resp = client.post(
+        "/api/runs",
+        json={"problem_id": problem.id, "source": VALID_SOURCE, "mode": "practice"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 202
+    run = db_session.get(Run, resp.json()["run_id"])
+    assert run is not None
+    assert run.stdin is None
+
+
 # --- Forums -----------------------------------------------------------------
 
 

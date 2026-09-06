@@ -248,6 +248,21 @@ th {
   color: var(--danger);
 }
 
+.status-yellow {
+  background: #fef9c3;
+  color: #a16207;
+}
+
+.status-orange {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.status-purple {
+  background: #f3e8ff;
+  color: #7e22ce;
+}
+
 .form-row {
   display: flex;
   gap: 0.5rem;

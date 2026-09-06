@@ -289,4 +289,23 @@ export const es: Record<string, string> = {
   "solve.errors.too_large": "El código supera el límite de 64 KB.",
   "solve.context.assignment": "Asignación {id}",
   "solve.context.contest": "Concurso {id}",
+
+  "solve.run.button": "Ejecutar muestra",
+  "solve.run.modal.title": "Ejecutar con entrada de muestra",
+  "solve.run.modal.inputLabel": "Entrada",
+  "solve.run.modal.inputHint": "Puedes editar la entrada antes de ejecutar.",
+  "solve.run.execute": "Ejecutar",
+  "solve.run.executing": "Ejecutando…",
+  "solve.run.cancel": "Cancelar",
+  "solve.run.loading": "Cargando entrada de muestra…",
+  "solve.run.loadError": "No se pudo cargar la entrada de muestra.",
+  "solve.run.submitError": "No se pudo ejecutar el código.",
+
+  "solve.practice.title": "Práctica",
+  "solve.practice.empty": "Aún no has ejecutado la muestra",
+  "solve.practice.input": "Entrada",
+  "solve.practice.output": "Salida",
+  "solve.practice.expected": "Esperado",
+  "solve.practice.tle_suggestion": "Sugerencia: Tu código excede el límite de pasos. Revisa si hay bucles infinitos o reduce la complejidad.",
+  "solve.practice.ce_error": "Error de compilación",
 };

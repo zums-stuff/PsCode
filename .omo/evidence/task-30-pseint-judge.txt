@@ -1,0 +1,41 @@
+Task 30 — Practice sandbox (Run button)
+============================================
+Date: 2026-09-06
+Status: DONE
+
+Files created:
+  - web/frontend/src/components/RunModal.tsx           (sample-input modal: fetch is_sample case, editable textarea, Ejecutar/Cancelar, 429 notice)
+  - web/frontend/src/components/PracticeOutputPanel.tsx (per-case rows: verdict badge, input/output/expected, steps, wall_ms; TLE suggestion; CE error <pre>)
+  - web/frontend/test/practice.test.tsx                (6 tests)
+  - web/api/alembic/versions/a46404eabb2f_add_run_stdin.py (adds runs.stdin TEXT NULL)
+
+Files modified:
+  - web/frontend/src/components/SolveToolbar.tsx       (+"Ejecutar muestra" button left of Enviar; +onPracticeRunCreated prop)
+  - web/frontend/src/routes/Solve.tsx                  (+practice run state + polling, test-cases fetch, PracticeOutputPanel below editor)
+  - web/frontend/src/i18n/es.ts                        (+17 solve.run.*/solve.practice.* keys, no removals)
+  - web/frontend/src/lib/api.ts                        (+getProblemCases, submitPracticeRun helpers)
+  - web/frontend/src/styles.css                        (+.status-yellow/.status-orange/.status-purple verdict badges)
+  - web/frontend/src/routes/Solve.css                  (+modal + practice-pre styles)
+  - web/api/src/pseint_api/routes/runs.py              (+stdin: str | None = None on RunCreateRequest; stored on Run row)
+  - web/api/src/pseint_api/models.py                   (+stdin: Mapped[str | None] Text nullable on Run)
+  - web/api/tests/test_api.py                          (+2 tests: stdin stored / stdin NULL)
+
+Red runs: 2 (backend: Run has no stdin attribute — expected TDD red)
+
+Acceptance criteria:
+  - [x] npx vitest run test/practice.test.tsx → 6/6 passed
+  - [x] npx tsc --noEmit → clean
+  - [x] npx vitest run → 51/51 passed (8 files), pre-existing tests green
+  - [x] ../../.venv/bin/python -m pytest tests/ -q → 177 passed
+  - [x] ../../.venv/bin/ruff check src tests/ → clean
+  - [x] ../../.venv/bin/alembic check → no drift (after upgrade head)
+
+QA scenarios:
+  - [x] RunModal opens from "Ejecutar muestra", pre-fills sample input (is_sample case), editable
+  - [x] Ejecutar → POST /api/runs {mode: practice, stdin} → modal closes → per-case output panel
+  - [x] 429 → friendly quota notice, modal stays open (input preserved)
+  - [x] TLE with steps > step_budget → suggested-fix message
+  - [x] CE → compiler error rendered in <pre>
+  - [x] Practice runs never graded: mode=practice in POST body, kind=practice in run detail, graded results pane stays empty
+
+Commit: feat(web): practice sandbox

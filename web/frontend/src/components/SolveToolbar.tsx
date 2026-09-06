@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, ApiError } from "../lib/api";
 import { t } from "../lib/i18n";
+import RunModal from "./RunModal";
 
 interface SolveToolbarProps {
   problemId: number;
@@ -8,6 +9,7 @@ interface SolveToolbarProps {
   assignmentId: string | null;
   contestId: string | null;
   onRunCreated: (runId: number) => void;
+  onPracticeRunCreated: (runId: number, stdin: string) => void;
   onReset: () => void;
 }
 
@@ -15,6 +17,8 @@ interface SolveToolbarProps {
  * Submit + reset + assignment/contest context banner. POST /api/runs with
  * mode practice|assignment|contest (todo 18 contract); 202 -> onRunCreated,
  * 413 (64KB cap) / 429 (quota) / other -> friendly inline notice.
+ * "Ejecutar muestra" opens the practice sandbox modal (todo 30) — that run
+ * is never graded.
  */
 export default function SolveToolbar({
   problemId,
@@ -22,10 +26,12 @@ export default function SolveToolbar({
   assignmentId,
   contestId,
   onRunCreated,
+  onPracticeRunCreated,
   onReset,
 }: SolveToolbarProps) {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [runModalOpen, setRunModalOpen] = useState(false);
 
   const contextLabel =
     assignmentId !== null
@@ -62,6 +68,9 @@ export default function SolveToolbar({
       {contextLabel !== null && (
         <span className="solve-context-banner">{contextLabel}</span>
       )}
+      <button type="button" onClick={() => setRunModalOpen(true)}>
+        {t("solve.run.button")}
+      </button>
       <button type="button" className="primary" onClick={handleSubmit} disabled={submitting}>
         {submitting ? t("solve.submitting") : t("solve.submit")}
       </button>
@@ -69,6 +78,14 @@ export default function SolveToolbar({
         {t("solve.reset")}
       </button>
       {notice !== null && <span className="solve-notice">{notice}</span>}
+      {runModalOpen && (
+        <RunModal
+          problemId={problemId}
+          source={source}
+          onClose={() => setRunModalOpen(false)}
+          onRunCreated={onPracticeRunCreated}
+        />
+      )}
     </div>
   );
 }

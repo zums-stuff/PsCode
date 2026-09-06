@@ -75,3 +75,26 @@ export function validateSource(
 ): Promise<import("./types").ValidateResult> {
   return api.post<import("./types").ValidateResult>("/api/validate", { source });
 }
+
+/** List a problem's test cases (todo 18); filter is_sample client-side. */
+export function getProblemCases(
+  problemId: number,
+): Promise<import("./types").TestCaseOut[]> {
+  return api.get<import("./types").TestCaseOut[]>(
+    `/api/problems/${problemId}/cases`,
+  );
+}
+
+/** Enqueue a practice run with custom stdin (todo 30 sandbox). */
+export function submitPracticeRun(
+  problemId: number,
+  source: string,
+  stdin: string,
+): Promise<{ run_id: number }> {
+  return api.post<{ run_id: number }>("/api/runs", {
+    problem_id: problemId,
+    source,
+    mode: "practice",
+    stdin,
+  });
+}
