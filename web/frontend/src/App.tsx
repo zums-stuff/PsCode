@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, RequireAuth, RequireRole } from "./lib/auth";
 import Login from "./routes/Login";
@@ -14,6 +14,7 @@ import ProblemResults from "./routes/ProblemResults";
 import Contest from "./routes/Contest";
 import Forum from "./routes/Forum";
 import AdminLayout from "./routes/admin/AdminLayout";
+import AdminDashboard from "./routes/admin/AdminDashboard";
 import AdminProblems from "./routes/admin/AdminProblems";
 import AdminProblemDetail from "./routes/admin/AdminProblemDetail";
 import AdminClasses from "./routes/admin/AdminClasses";
@@ -66,7 +67,7 @@ export default function App() {
                 </RequireRole>
               }
             >
-              <Route index element={<Navigate to="/admin/problems" replace />} />
+              <Route index element={<AdminDashboard />} />
               <Route path="problems" element={<AdminProblems />} />
               <Route path="problems/new" element={<AdminProblemDetail />} />
               <Route path="problems/:id" element={<AdminProblemDetail />} />

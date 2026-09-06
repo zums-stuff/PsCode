@@ -336,6 +336,58 @@ th {
   font-size: 0.9rem;
 }
 
+/* --- admin dashboard (plan todo 26) --- */
+
+.admin-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.admin-nav-link-active {
+  background: var(--surface);
+  outline: 2px solid var(--accent);
+  color: var(--accent);
+}
+
+.admin-nav-badge {
+  background: var(--danger);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.dashboard-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.dashboard-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard-section-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
 /* --- anticheat report (plan todo 25) --- */
 
 .admin-anticheat {
