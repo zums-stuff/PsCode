@@ -341,7 +341,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: syntax classes present for keywords; failure: unknown token left unstyled but page never crashes. Evidence .omo/evidence/task-28-pseint-judge.txt
   Commit: Y | feat(web): codemirror pseint mode
 
-- [ ] 29. Solve page + inline syntax errors
+- [x] 29. Solve page + inline syntax errors
   What to do / Must NOT do: /problem/:id: statement pane (markdown) + CodeMirror pane + results pane; desktop 3-pane, mobile stacked (C4 responsiveness); debounced (400ms) POST /api/validate (engine parse from todo 7) → gutter + underline marks with Spanish messages; Submit button → POST /api/runs; assignment/contest context variants. Must NOT implement a client parser; must NOT block typing on validation latency.
   Parallelization: Wave 5 | Blocked by: 27,28,7 | Blocks: 30-33
   References: draft M11/D11; validate contract from todo 7; CodeMirror linter/annotations API
