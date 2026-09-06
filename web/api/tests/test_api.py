@@ -1828,8 +1828,117 @@ def test_list_own_runs(client, db_session):
     resp = client.get("/api/runs", headers=_auth(token))
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body) == 2
-    assert all(r["user_id"] == alice.id for r in body)
+    assert body["total"] == 2
+    assert len(body["items"]) == 2
+    assert all(r["user_id"] == alice.id for r in body["items"])
+
+
+def test_list_runs_paginated_envelope(client, db_session):
+    alice = _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    problem = _make_problem(db_session, teacher)
+    for _ in range(3):
+        _seed_run(db_session, alice, problem, verdict="AC", case_verdicts=["AC"])
+    token = _login(client, "alice")
+    resp = client.get("/api/runs?page=1&size=2", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["page"] == 1
+    assert body["size"] == 2
+    assert body["total"] == 3
+    assert len(body["items"]) == 2
+    assert all(r["user_id"] == alice.id for r in body["items"])
+
+
+def test_list_runs_filter_by_problem(client, db_session):
+    alice = _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    p1 = _make_problem(db_session, teacher, title="Uno")
+    p2 = _make_problem(db_session, teacher, title="Dos")
+    _seed_run(db_session, alice, p1, verdict="AC", case_verdicts=["AC"])
+    _seed_run(db_session, alice, p2, verdict="WA", case_verdicts=["WA"])
+    token = _login(client, "alice")
+    resp = client.get(f"/api/runs?problem_id={p1.id}", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["problem_id"] == p1.id
+
+
+def test_run_detail_public_case_shows_expected(client, db_session):
+    alice = _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    problem = _make_problem(db_session, teacher)
+    _make_test_case(
+        db_session, problem, input_text="1 2", expected="3", is_public=True
+    )
+    run = _seed_run(db_session, alice, problem, verdict="AC", case_verdicts=["AC"])
+    tr = db_session.scalars(
+        select(TestResult).where(TestResult.run_id == run.id)
+    ).first()
+    tr.output = "3"
+    db_session.commit()
+    token = _login(client, "alice")
+    resp = client.get(f"/api/runs/{run.id}/detail", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run"]["id"] == run.id
+    assert len(body["test_cases"]) == 1
+    tc = body["test_cases"][0]
+    assert tc["verdict"] == "AC"
+    assert tc["expected_output"] == "3"
+    assert tc["input"] == "1 2"
+    assert tc["diff_line"] is None
+
+
+def test_run_detail_hidden_case_masks_expected(client, db_session):
+    alice = _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    problem = _make_problem(db_session, teacher)
+    _make_test_case(
+        db_session,
+        problem,
+        input_text="x" * 100,
+        expected="secret",
+        is_public=False,
+        is_sample=False,
+    )
+    run = _seed_run(db_session, alice, problem, verdict="WA", case_verdicts=["WA"])
+    tr = db_session.scalars(
+        select(TestResult).where(TestResult.run_id == run.id)
+    ).first()
+    tr.output = "wrong"
+    db_session.commit()
+    token = _login(client, "alice")
+    resp = client.get(f"/api/runs/{run.id}/detail", headers=_auth(token))
+    assert resp.status_code == 200
+    tc = resp.json()["test_cases"][0]
+    assert tc["expected_output"] is None
+    assert tc["input"] == "x" * 80 + "..."
+
+
+def test_run_detail_wa_diff_line(client, db_session):
+    alice = _make_user(db_session, "alice")
+    teacher = _make_user(db_session, "prof", role="teacher")
+    problem = _make_problem(db_session, teacher)
+    _make_test_case(
+        db_session,
+        problem,
+        input_text="1",
+        expected="line1\nline2\nline3",
+        is_public=True,
+    )
+    run = _seed_run(db_session, alice, problem, verdict="WA", case_verdicts=["WA"])
+    tr = db_session.scalars(
+        select(TestResult).where(TestResult.run_id == run.id)
+    ).first()
+    tr.output = "line1\nDIFF\nline3"
+    db_session.commit()
+    token = _login(client, "alice")
+    resp = client.get(f"/api/runs/{run.id}/detail", headers=_auth(token))
+    assert resp.status_code == 200
+    tc = resp.json()["test_cases"][0]
+    assert tc["diff_line"] == 2
 
 
 def test_practice_run_has_no_test_results(client, db_session):
