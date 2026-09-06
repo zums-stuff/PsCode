@@ -13,10 +13,12 @@ dependencies = [
     "psycopg[binary]>=3.1",
     "pydantic>=2.0",
     "pwdlib[argon2]>=0.2",
+    "fastapi>=0.110",
+    "python-jose[cryptography]>=3.3",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "httpx"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

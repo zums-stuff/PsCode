@@ -18,6 +18,10 @@ DEFAULT_DATABASE_URL = (
 # itself, but declared here so the API package owns the invariant from day one.
 MIN_SECRET_KEY_LENGTH = 32
 
+# JWT access-token lifetime in minutes (M13: 24h default).  Tests override this
+# with a short/negative value to exercise expiry.
+DEFAULT_TOKEN_TTL_MINUTES = 24 * 60
+
 
 def database_url() -> str:
     return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
@@ -40,3 +44,8 @@ def secret_key() -> str:
             f"SECRET_KEY must be at least {MIN_SECRET_KEY_LENGTH} chars"
         )
     return value
+
+
+def token_ttl_minutes() -> int:
+    raw = os.environ.get("TOKEN_TTL_MINUTES", str(DEFAULT_TOKEN_TTL_MINUTES))
+    return int(raw)
