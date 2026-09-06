@@ -1,0 +1,29 @@
+=== Task 20 evidence: Rate limiting + request validation ===
+Date: 2026-09-06T02:27:48Z
+
+--- Acceptance: pytest tests/test_ratelimit.py -q ---
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+9 passed, 2 warnings in 8.07s
+
+--- Full suite: pytest tests/ -q ---
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+147 passed, 2 warnings in 29.85s
+
+--- ruff check src tests/ ---
+All checks passed!
+
+--- alembic check ---
+No new upgrade operations detected.
+
+--- Files ---
+created: web/api/src/pseint_api/ratelimit.py
+created: web/api/tests/test_ratelimit.py
+modified: web/api/src/pseint_api/main.py (add_middleware + create_app(limiter=...))
+
+--- QA scenarios ---
+happy: normal student flow unaffected (5 runs -> all 202, no 429) [test_normal_flow_5_runs_all_202]
+failure: burst of 11 practice runs -> 10 ok + 1x429 with Retry-After [test_burst_of_11_practice_runs_10_ok_1_429]
+failure: per-IP 60 ok + 61st 429 [test_per_ip_60_ok_61st_429]
+failure: 31st validate -> 429 submissions [test_validate_shares_submissions_counter]
+failure: runs allowed but subs exceeded -> 429 [test_runs_limit_takes_precedence_over_submissions]
+plan-forbidden: healthchecks/static never rate-limited [test_healthchecks_skipped, test_static_assets_skipped]

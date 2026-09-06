@@ -1,10 +1,11 @@
-"""FastAPI application factory for pseint-api (todo 17/18)."""
+"""FastAPI application factory for pseint-api (todo 17/18/20)."""
 
 from __future__ import annotations
 
 from fastapi import FastAPI
 
 from . import ws
+from .ratelimit import RateLimitMiddleware
 from .routes import (
     assignments,
     auth,
@@ -20,8 +21,10 @@ from .routes import (
 )
 
 
-def create_app() -> FastAPI:
+def create_app(limiter=None) -> FastAPI:
     app = FastAPI(title="pseint-api")
+    # Todo 20: rate limiting wraps all routes; tests inject an in-memory limiter.
+    app.add_middleware(RateLimitMiddleware, limiter=limiter)
     app.include_router(auth.router)
     app.include_router(problems.router)
     app.include_router(test_cases.router)
