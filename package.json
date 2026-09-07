@@ -1,0 +1,13 @@
+{
+  "name": "pseint-judge",
+  "version": "0.1.0",
+  "description": "A Codeforces-style online judge for the PseInt pseudocode dialect. Submissions are graded by a deterministic interpreter (`engine/`) that counts engine steps and buckets them into the SPEC §(k) complexity bands (`OK` / `ALTA` / `EXCESIVA`); verdicts (`AC` / `WA` / `TLE` / `RE` / `CE`) and a text-similarity anticheat report round out the picture.  The platform is teacher + student + admin via a FastAPI backend and a React + CodeMirror frontend, all behind a Caddy reverse proxy and a stateless RQ worker pool.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
