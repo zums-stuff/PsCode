@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, api } from "../lib/api";
+import { ApiError, api, getContestMyRuns } from "../lib/api";
 import { t } from "../lib/i18n";
 import { useRunSocket } from "../lib/ws";
 import type {
@@ -9,28 +9,38 @@ import type {
   ContestProblem,
   ContestScoreboard as ContestScoreboardData,
   ContestTeam,
+  RunOut,
 } from "../lib/types";
 import ContestScoreboard from "../components/ContestScoreboard";
 import ContestStatusBadge, {
   contestStatus,
 } from "../components/ContestStatusBadge";
 import CountdownTimer from "../components/CountdownTimer";
+import ErrorBoundary from "../components/ErrorBoundary";
+import TeamsPanel from "../components/TeamsPanel";
+import { useAuth } from "../lib/auth";
 
 /**
  * Student contest page (plan todo 32): header (title, status badge, countdown
  * to start or end), problem list with links to /problem/:id?contest=:id,
- * register button (pre-start only), and the live scoreboard (post-start). The
- * scoreboard is gated by phase (upcoming = never) and by participant access
- * (non-participants get a friendly 403 notice — the backend enforces it).
+ * register button (pre-start only), the live scoreboard (post-start), and the
+ * student's own runs in the contest (post-start). The scoreboard is gated by
+ * phase (upcoming = never) and by participant access (non-participants get a
+ * friendly 403 notice — the backend enforces it).
  *
  * WS hook (useRunSocket) streams the student's own runs; when one of them
  * flips to AC, the scoreboard query is invalidated so the row updates
  * without a reload (M12).
+ *
+ * The default export is wrapped in an ErrorBoundary so any unhandled render
+ * exception shows an "Algo salió mal" message instead of a blank page (see
+ * the MyRuns `.items` unpacking below — the bug this boundary guards).
  */
-export default function Contest() {
+function Contest() {
   const { id } = useParams();
   const contestId = id === undefined ? NaN : Number(id);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const [now, setNow] = useState<Date>(() => new Date());
   const [registering, setRegistering] = useState<boolean>(false);
@@ -95,6 +105,9 @@ export default function Contest() {
 
   function refresh(): void {
     void queryClient.invalidateQueries({ queryKey: ["contest", contestId] });
+    void queryClient.invalidateQueries({
+      queryKey: ["contest", contestId, "teams"],
+    });
   }
 
   async function handleRegister(): Promise<void> {
@@ -130,26 +143,38 @@ export default function Contest() {
 
   return (
     <div className="contest-page">
-      <header className="contest-header">
-        <h1>{contest.title}</h1>
-        <ContestStatusBadge
-          startAt={contest.start_at}
-          endAt={contest.end_at}
-          now={now}
-        />
-        {phase === "upcoming" && (
-          <p className="contest-countdown-row">
-            <span>{t("student.contest.countdown.starts")}:</span>{" "}
+      {phase === "upcoming" && (
+        <div className="contest-hero contest-hero--upcoming" data-testid="contest-hero">
+          <h2>{contest.title}</h2>
+          <ContestStatusBadge startAt={contest.start_at} endAt={contest.end_at} now={now} />
+          <p className="contest-hero-countdown">
             <CountdownTimer targetAt={contest.start_at} onComplete={refresh} />
           </p>
-        )}
-        {phase === "running" && (
-          <p className="contest-countdown-row">
-            <span>{t("student.contest.countdown.ends")}:</span>{" "}
+        </div>
+      )}
+      {phase === "running" && (
+        <div className="contest-hero contest-hero--running" data-testid="contest-hero">
+          <h2>{contest.title}</h2>
+          <ContestStatusBadge startAt={contest.start_at} endAt={contest.end_at} now={now} />
+          <p className="contest-hero-countdown">
             <CountdownTimer targetAt={contest.end_at} onComplete={refresh} />
           </p>
-        )}
-      </header>
+        </div>
+      )}
+      {phase === "ended" && (
+        <div className="contest-hero contest-hero--ended" data-testid="contest-hero">
+          <h2>{contest.title}</h2>
+          <ContestStatusBadge startAt={contest.start_at} endAt={contest.end_at} now={now} />
+          <p>{t("student.contests.endedOn")}: {new Date(contest.end_at).toLocaleDateString("es-MX")}</p>
+        </div>
+      )}
+
+      {phase === null && (
+        <header className="contest-header">
+          <h1>{contest.title}</h1>
+          <ContestStatusBadge startAt={contest.start_at} endAt={contest.end_at} now={now} />
+        </header>
+      )}
 
       {phase === "upcoming" && (
         <section className="contest-register">
@@ -212,6 +237,7 @@ export default function Contest() {
               scoringMode={contest.scoring_mode}
               teamsEnabled={contest.teams_enabled}
               teams={teams}
+              problems={problems}
               // Students don't fetch the participants roster (backend is
               // teacher/admin-only); names fall back to raw participant_id.
               participants={[]}
@@ -223,18 +249,73 @@ export default function Contest() {
       {contest.teams_enabled && (
         <section className="contest-teams">
           <h2>{t("student.contest.teams.title")}</h2>
-          {teams.length === 0 && (
-            <p className="hint">{t("student.contest.teams.empty")}</p>
-          )}
-          {teams.length > 0 && (
-            <ul>
-              {teams.map((team) => (
-                <li key={team.id}>{team.name}</li>
-              ))}
-            </ul>
-          )}
+          <TeamsPanel
+            contestId={contestId}
+            phase={phase ?? ""}
+            teamsEnabled={contest.teams_enabled}
+            onChanged={refresh}
+          />
+        </section>
+      )}
+
+      {phase !== "upcoming" && (
+        <section className="contest-my-runs">
+          <h2>{t("results.title")}</h2>
+          <MyRuns contestId={contestId} />
         </section>
       )}
     </div>
+  );
+}
+
+function MyRuns({ contestId }: { contestId: number }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["contest", contestId, "my-runs"],
+    queryFn: () => getContestMyRuns(contestId),
+  });
+
+  // The API returns a paginated Page<RunOut> (`{items, ...}`), not a bare
+  // array.  Reading `data.items` (defaulting to []) prevents the
+  // `TypeError: data.map is not a function` that blanked the contest page —
+  // the root cause of this bug (see api.getContestMyRuns).
+  const runs = data?.items ?? [];
+
+  if (isLoading) return <p>{t("results.loading")}</p>;
+  if (isError) return <p className="error">{t("results.loadError")}</p>;
+  if (runs.length === 0) return <p className="hint">{t("results.empty")}</p>;
+
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>{t("results.columns.problem")}</th>
+          <th>{t("results.columns.verdict")}</th>
+          <th>{t("results.columns.steps")}</th>
+          <th>{t("results.columns.wall")}</th>
+          <th>{t("results.columns.submitted")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((run) => (
+          <tr key={run.id}>
+            <td>{run.problem_id}</td>
+            <td>{run.summary_verdict ?? "—"}</td>
+            <td>{run.steps ?? "—"}</td>
+            <td>{run.wall_ms !== null ? `${run.wall_ms}ms` : "—"}</td>
+            <td>{new Date(run.created_at).toLocaleString("es-MX")}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// Wrap the page in an ErrorBoundary (contest page fix): any unhandled
+// render exception now shows "Algo salió mal" instead of a blank page.
+export default function ContestPage() {
+  return (
+    <ErrorBoundary>
+      <Contest />
+    </ErrorBoundary>
   );
 }

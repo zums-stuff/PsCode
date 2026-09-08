@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { api } from "../lib/api";
+import { api, rejudgeRun } from "../lib/api";
 import { t } from "../lib/i18n";
+import { useToast } from "../lib/toast";
 import type { AssignmentSubmissionOut } from "../lib/types";
 import SourceView from "./SourceView";
 
@@ -20,7 +21,7 @@ export default function AssignmentSubmissionsTable({
 }: Props) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [rejudging, setRejudging] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   if (rows.length === 0) {
     return <p>{t("admin.assignments.empty")}</p>;
@@ -28,17 +29,19 @@ export default function AssignmentSubmissionsTable({
 
   async function handleRejudge(row: AssignmentSubmissionOut) {
     setRejudging(row.user_id);
-    setError(null);
+    if (row.best_run_id === null) {
+      toast.error(t("admin.assignments.rejudgeError"));
+      setRejudging(null);
+      return;
+    }
     try {
-      await api.post("/api/runs", {
-        problem_id: problemId,
-        source: row.source,
-        mode: "assignment",
-        assignment_id: assignmentId,
-      });
+      const res = await rejudgeRun(row.best_run_id);
+      toast.success(
+        t("admin.assignments.rejudgeSuccess", { runId: res.run_id }),
+      );
       onRejudged();
     } catch {
-      setError(t("admin.assignments.rejudgeError"));
+      toast.error(t("admin.assignments.rejudgeError"));
     } finally {
       setRejudging(null);
     }
@@ -46,7 +49,6 @@ export default function AssignmentSubmissionsTable({
 
   return (
     <div>
-      {error && <p className="error">{error}</p>}
       <table>
         <thead>
           <tr>

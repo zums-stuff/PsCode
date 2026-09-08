@@ -136,12 +136,38 @@ def list_problems(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    total = db.scalar(select(func.count(Problem.id))) or 0
+    from sqlalchemy import or_
+
+    # Students only see is_public problems, plus problems linked to their
+    # classes, plus problems they have already submitted to.
+    if user.role == "student":
+        class_ids = _visible_class_ids(db, user)
+        submitted_problem_ids = db.scalars(
+            select(Run.problem_id).where(Run.user_id == user.id).distinct()
+        ).all()
+        class_problem_ids = db.scalars(
+            select(Assignment.problem_id).where(
+                Assignment.class_id.in_(class_ids)
+            ).distinct()
+        ).all()
+        allowed_ids = set(submitted_problem_ids) | set(class_problem_ids)
+        where_clause = or_(
+            Problem.is_public == True,  # noqa: E712
+            Problem.id.in_(allowed_ids),
+        )
+    else:
+        where_clause = None
+
+    count_q = select(func.count(Problem.id))
+    if where_clause is not None:
+        count_q = count_q.where(where_clause)
+    total = db.scalar(count_q) or 0
+
+    q = select(Problem).order_by(Problem.id)
+    if where_clause is not None:
+        q = q.where(where_clause)
     problems = db.scalars(
-        select(Problem)
-        .order_by(Problem.id)
-        .offset((page - 1) * size)
-        .limit(size)
+        q.offset((page - 1) * size).limit(size)
     ).all()
     # One aggregate query for the user's verdicts across ALL problems.
     rows = db.execute(

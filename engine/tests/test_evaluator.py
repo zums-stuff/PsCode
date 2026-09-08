@@ -536,6 +536,138 @@ def test_leer_cadena_takes_token_as_is():
 
 
 # ---------------------------------------------------------------------------
+# Typed declarations (``Cadena s`` / ``Entero i <- 5``) — sugar for
+# ``Definir`` with the same type tag.
+# ---------------------------------------------------------------------------
+
+
+def test_typed_decl_cadena_then_leer_escribir():
+    """The exact user repro: ``Cadena s / Leer s / Escribir s`` end-to-end."""
+    result = run_ok(
+        "Proceso P\n"
+        "    Cadena s\n"
+        "    Leer s\n"
+        "    Escribir s\n"
+        "FinProceso",
+        input_text="Hola\n",
+    )
+    assert result.output == "Hola\n"
+    assert result.error is None
+
+
+def test_typed_decl_entero_default_is_zero():
+    result = run_ok(
+        "Proceso P\n"
+        "    Entero x\n"
+        "    Escribir x\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "0\n"
+
+
+def test_typed_decl_real_default_is_zero():
+    result = run_ok(
+        "Proceso P\n"
+        "    Real x\n"
+        "    Escribir x\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "0.0\n"
+
+
+def test_typed_decl_logico_default_is_falso():
+    result = run_ok(
+        "Proceso P\n"
+        "    Logico b\n"
+        "    Escribir b\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "Falso\n"
+
+
+def test_typed_decl_cadena_default_is_empty():
+    result = run_ok(
+        "Proceso P\n"
+        "    Cadena s\n"
+        "    Escribir s\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "\n"
+
+
+def test_typed_decl_with_initializer_entero():
+    result = run_ok(
+        "Proceso P\n"
+        "    Entero i <- 42\n"
+        "    Escribir i\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "42\n"
+
+
+def test_typed_decl_with_initializer_real():
+    result = run_ok(
+        "Proceso P\n"
+        "    Real pi <- 3.14\n"
+        "    Escribir pi\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "3.14\n"
+
+
+def test_typed_decl_with_initializer_logico_verdadero():
+    result = run_ok(
+        "Proceso P\n"
+        "    Logico b <- Verdadero\n"
+        "    Escribir b\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "Verdadero\n"
+
+
+def test_typed_decl_with_initializer_caracter():
+    result = run_ok(
+        'Proceso P\n'
+        '    Caracter c <- "X"\n'
+        "    Escribir c\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "X\n"
+
+
+def test_typed_decl_conflicting_types_is_err_type():
+    """``Entero i <- 5`` then ``Cadena i`` redeclares with a different type → RE."""
+    err = run_err(
+        "Proceso P\n"
+        "    Entero i <- 5\n"
+        "    Cadena i\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert err.code == "ERR_TYPE"
+
+
+def test_typed_decl_coerces_value_to_declared_type():
+    """``Real x <- 5`` coerces the integer 5 to 5.0 (SPEC §(c) matrix)."""
+    result = run_ok(
+        "Proceso P\n"
+        "    Real x <- 5\n"
+        "    Escribir x\n"
+        "FinProceso",
+        input_text="",
+    )
+    assert result.output == "5.0\n"
+
+
+# ---------------------------------------------------------------------------
 # Control structures
 # ---------------------------------------------------------------------------
 

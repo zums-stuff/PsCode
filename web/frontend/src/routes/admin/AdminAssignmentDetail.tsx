@@ -6,9 +6,13 @@ import { t } from "../../lib/i18n";
 import type { AssignmentListItem, Page } from "../../lib/types";
 import AssignmentSubmissionsTable from "../../components/AssignmentSubmissionsTable";
 
-/** /admin/assignments/:id — per-student best submissions + rejudge. */
+/** /admin/classes/:class_id/assignments/:assignment_id and
+ *  /admin/assignments/:id — per-student best submissions + rejudge. */
 export default function AdminAssignmentDetail() {
-  const { id } = useParams();
+  const params = useParams();
+  // Use `assignment_id` when nested under a class; fall back to `id` for
+  // the legacy top-level route.
+  const id = params.assignment_id ?? params.id;
   const { user } = useAuth();
 
   if (user?.role === "student") {

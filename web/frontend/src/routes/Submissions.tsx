@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { getRuns } from "../lib/api";
+import { createRun, getRuns, getRunDetail } from "../lib/api";
 import { t } from "../lib/i18n";
 import type { RunOut } from "../lib/types";
 import BestBadge from "../components/BestBadge";
-import RunDetailModal from "../components/RunDetailModal";
+import RunActions from "../components/RunActions";
+import SourceView from "../components/SourceView";
+import TestCaseList from "../components/TestCaseList";
 import VerdictBadge, { RunStatusBadge } from "../components/VerdictBadge";
 import { useRunSocket } from "../lib/ws";
 
 const PAGE_SIZE = 20;
 
-/** Verdict priority (plan M7): AC > WA > TLE > RE > CE. */
 const VERDICT_PRIORITY: Record<string, number> = {
   AC: 5,
   WA: 4,
@@ -20,9 +21,6 @@ const VERDICT_PRIORITY: Record<string, number> = {
   CE: 1,
 };
 
-/** Compute the assignment-best run ids in the page: for each
- *  (problem_id, assignment_id) group, the run with highest verdict
- *  priority and fewest steps among ties. Practice runs are not best. */
 function computeBestRunIds(runs: RunOut[]): Set<number> {
   const groups = new Map<string, RunOut[]>();
   for (const run of runs) {
@@ -59,15 +57,15 @@ function formatDate(iso: string): string {
 }
 
 /**
- * /submissions — paginated table of the student's runs (plan todo 31).
- * Live-updates via WS: any run event refetches the current page. Rows open
- * the RunDetailModal; failed-transport (status=failed) rows get a Retry
- * button that re-POSTs /api/runs.
+ * /submissions — paginated Codeforces-style table of the student's runs.
+ * Rows are collapsed by default; clicking expands inline to show source,
+ * verdict, and sample test cases. Hidden cases are omitted from collapsed
+ * view and shown with "(oculto)" in expanded view.
  */
 export default function Submissions() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [openRunId, setOpenRunId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
 
   const { events } = useRunSocket();
@@ -77,7 +75,6 @@ export default function Submissions() {
     queryFn: () => getRuns(page, PAGE_SIZE),
   });
 
-  // Refetch the runs list whenever a WS run event arrives (plan todo 31).
   useEffect(() => {
     if (events.length === 0) return;
     void queryClient.invalidateQueries({ queryKey: ["student", "runs"] });
@@ -88,19 +85,24 @@ export default function Submissions() {
     [runsQuery.data],
   );
 
+  function toggleExpand(id: number) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
   async function handleRetry(run: RunOut) {
     setRetryError(null);
     try {
-      await fetch("/api/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          problem_id: run.problem_id,
-          source: "",
-          mode: run.kind,
-          assignment_id: run.assignment_id,
-          contest_id: run.contest_id,
-        }),
+      // Re-submit the run's REAL source (the list payload omits it), as a
+      // practice sandbox run when the original was practice, otherwise in the
+      // original mode (Bug A — previous code posted an empty source).
+      const detail = await getRunDetail(run.id);
+      const mode = run.kind === "practice" ? "practice" : run.kind;
+      await createRun({
+        problemId: run.problem_id,
+        source: detail.run.source ?? "",
+        mode: mode as "practice" | "assignment" | "contest",
+        assignmentId: run.assignment_id,
+        contestId: run.contest_id,
       });
       await queryClient.invalidateQueries({ queryKey: ["student", "runs"] });
     } catch {
@@ -132,6 +134,7 @@ export default function Submissions() {
           <table className="data-table">
             <thead>
               <tr>
+                <th />
                 <th>{t("results.columns.problem")}</th>
                 <th>{t("results.columns.status")}</th>
                 <th>{t("results.columns.verdict")}</th>
@@ -144,50 +147,14 @@ export default function Submissions() {
             </thead>
             <tbody>
               {runsQuery.data.items.map((run) => (
-                <tr key={run.id}>
-                  <td>
-                    <Link to={`/problem/${run.problem_id}`}>
-                      #{run.problem_id}
-                    </Link>
-                  </td>
-                  <td>
-                    <RunStatusBadge status={run.status} />
-                  </td>
-                  <td>
-                    {run.summary_verdict !== null ? (
-                      <VerdictBadge verdict={run.summary_verdict} />
-                    ) : (
-                      "—"
-                    )}
-                    {bestIds.has(run.id) && (
-                      <>
-                        {" "}
-                        <BestBadge />
-                      </>
-                    )}
-                  </td>
-                  <td>{run.steps ?? "—"}</td>
-                  <td>{run.wall_ms ?? "—"}</td>
-                  <td>{formatDate(run.created_at)}</td>
-                  <td>{t(`results.kind.${run.kind}`)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      onClick={() => setOpenRunId(run.id)}
-                    >
-                      {t("results.view")}
-                    </button>
-                    {run.status === "failed" && (
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={() => void handleRetry(run)}
-                      >
-                        {t("results.retry")}
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <RunRow
+                  key={run.id}
+                  run={run}
+                  expanded={expandedId === run.id}
+                  onToggle={() => toggleExpand(run.id)}
+                  isBest={bestIds.has(run.id)}
+                  onRetry={() => void handleRetry(run)}
+                />
               ))}
             </tbody>
           </table>
@@ -200,11 +167,118 @@ export default function Submissions() {
           />
         </>
       )}
-
-      {openRunId !== null && (
-        <RunDetailModal runId={openRunId} onClose={() => setOpenRunId(null)} />
-      )}
     </div>
+  );
+}
+
+interface RunRowProps {
+  run: RunOut;
+  expanded: boolean;
+  onToggle: () => void;
+  isBest: boolean;
+  onRetry: () => void;
+}
+
+function RunRow({ run, expanded, onToggle, isBest, onRetry }: RunRowProps) {
+  return (
+    <>
+      <tr
+        className="run-row"
+        onClick={onToggle}
+        style={{ cursor: "pointer" }}
+        aria-expanded={expanded}
+      >
+        <td>{expanded ? "▼" : "▶"}</td>
+        <td>
+          <Link to={`/problem/${run.problem_id}`} onClick={(e) => e.stopPropagation()}>
+            #{run.problem_id}
+          </Link>
+        </td>
+        <td>
+          <RunStatusBadge status={run.status} />
+        </td>
+        <td>
+          {run.summary_verdict !== null ? (
+            <VerdictBadge verdict={run.summary_verdict} />
+          ) : (
+            "—"
+          )}
+          {isBest && (
+            <>
+              {" "}
+              <BestBadge />
+            </>
+          )}
+        </td>
+        <td>{run.steps ?? "—"}</td>
+        <td>{run.wall_ms ?? "—"}</td>
+        <td>{formatDate(run.created_at)}</td>
+        <td>{t(`results.kind.${run.kind}`)}</td>
+        <td>
+          <RunActions run={run} onViewDetail={onToggle} onResubmit={onRetry} />
+        </td>
+      </tr>
+      {expanded && <ExpandedRow runId={run.id} />}
+    </>
+  );
+}
+
+function ExpandedRow({ runId }: { runId: number }) {
+  const detailQuery = useQuery({
+    queryKey: ["run", "detail", runId],
+    queryFn: () => getRunDetail(runId),
+  });
+
+  if (detailQuery.isLoading) {
+    return (
+      <tr className="run-expanded">
+        <td colSpan={9}>
+          <p className="hint">{t("results.loading")}</p>
+        </td>
+      </tr>
+    );
+  }
+
+  if (detailQuery.isError || detailQuery.data === undefined) {
+    return (
+      <tr className="run-expanded">
+        <td colSpan={9}>
+          <p className="error">{t("results.loadError")}</p>
+        </td>
+      </tr>
+    );
+  }
+
+  const { run, test_cases } = detailQuery.data;
+  const sampleFirst = [...test_cases].sort((a, b) =>
+    Number(b.is_sample) - Number(a.is_sample),
+  );
+
+  return (
+    <tr className="run-expanded">
+      <td colSpan={9}>
+        <div className="run-expanded-content">
+          {run.summary_verdict !== null && (
+            <p>
+              <strong>{t("submissions.verdict")}:</strong>{" "}
+              <VerdictBadge verdict={run.summary_verdict} />
+            </p>
+          )}
+
+          <section>
+            <h4>{t("submissions.code")}</h4>
+            <SourceView source={run.source ?? ""} />
+          </section>
+
+          {sampleFirst.length > 0 && (
+            <section>
+              <h4>{t("submissions.sampleCases")}</h4>
+              <TestCaseList cases={sampleFirst} limit={2} />
+            </section>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 

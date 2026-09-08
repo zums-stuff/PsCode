@@ -12,7 +12,7 @@
 #   * ENTRYPOINT is a Python script (no bash dependency)
 #
 # Build:
-#   docker build -f infra/Dockerfile.worker -t pseint-judge-worker:latest .
+#   docker build -f infra/Dockerfile.worker -t pseint-judge-engine:latest .
 #
 # Run (via the wrapper — do NOT invoke docker run directly):
 #   python scripts/run_sandboxed.py < program.psc
@@ -33,7 +33,6 @@ COPY engine/ /app/engine/
 COPY judge/ /app/judge/
 
 RUN pip install --no-cache-dir /app/engine /app/judge \
-    && pip cache purge \
     && rm -rf /app/engine /app/judge /root/.cache
 
 # Entrypoint reads the program source from stdin, drops it into /tmp/source.psc

@@ -23,6 +23,7 @@ export interface ProblemOut {
   expected_complexity: string;
   step_budget: number | null;
   compare_mode: string;
+  is_public: boolean;
   author_id: number;
   created_at: string;
 }
@@ -81,6 +82,7 @@ export interface AssignmentSubmissionOut {
   best_verdict: string | null;
   steps: number | null;
   source: string;
+  best_run_id: number | null;
 }
 
 export interface ContestListItem {
@@ -116,6 +118,7 @@ export interface ContestTeam {
   contest_id: number;
   name: string;
   created_at: string;
+  members: number[];
 }
 
 export interface ContestTeamMember {
@@ -191,10 +194,12 @@ export interface RunDetailCaseOut {
   expected_output: string | null;
   /** 1-indexed first differing line for WA cases (safe subset: line only). */
   diff_line: number | null;
+  is_sample: boolean;
+  is_public: boolean;
 }
 
 export interface RunDetailResponse {
-  run: RunOut;
+  run: RunOut & { source?: string };
   test_cases: RunDetailCaseOut[];
 }
 
@@ -211,6 +216,21 @@ export interface ForumThread {
   created_by: number;
   pinned: boolean;
   created_at: string;
+}
+
+/** One row of GET /api/threads (cross-problem forums index tab). */
+export interface ThreadIndexItem {
+  id: number;
+  problem_id: number;
+  problem_title: string;
+  contest_id: number | null;
+  title: string;
+  author_id: number;
+  author_username: string;
+  pinned: boolean;
+  created_at: string;
+  reply_count: number;
+  last_activity_at: string | null;
 }
 
 export interface ForumPost {

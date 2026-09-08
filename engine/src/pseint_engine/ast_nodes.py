@@ -96,8 +96,9 @@ class Stmt:
 
 @dataclass(frozen=True)
 class Assignment(Stmt):
-    target: Identifier
-    value: Expr
+    target: Identifier = field(default_factory=lambda: Identifier(0, 0))
+    value: Expr | None = None
+    type_name: str | None = None
 
 
 @dataclass(frozen=True)

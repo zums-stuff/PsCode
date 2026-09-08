@@ -316,7 +316,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: planted pair appears at top; failure: same-team submissions absent from list (exclusion verified). Evidence .omo/evidence/task-25-pseint-judge.txt
   Commit: Y | feat(web): anticheat reports
 
-- [~] 26. Teacher dashboard + navigation
+- [x] 26. Teacher dashboard + navigation
   What to do / Must NOT do: /admin overview: active assignments, upcoming/running contests, flagged-pair count badge, recent submissions; role-aware sidebar. Must NOT duplicate page logic (links only).
   Parallelization: Wave 4 | Blocked by: 22-25 | Blocks: (wave gate)
   References: draft C3; existing page hooks
@@ -406,7 +406,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: full-stack healthz chain responds; failure: postgres down → api healthcheck reports degraded (not crash-loop silent). Evidence .omo/evidence/task-36-pseint-judge.txt
   Commit: Y | feat(infra): docker-compose stack
 
-- [~] 37. Load/burst pass
+- [x] 37. Load/burst pass
   What to do / Must NOT do: scripts/loadtest.py: 200 submissions burst (mixed problems incl. an O(n^2) one) via API as 20 simulated students against the LOCAL compose stack (todo 36, HTTP localhost); assert: all reach done, DB run count == 200 (no loss), p95 verdict latency < 60s from enqueue, worker CPU < 80%; write LOAD.md with numbers + tuning notes (worker count = REPLICAS, memory). Must NOT scale workers mid-test (document instead); must NOT require any external infra.
   Parallelization: Wave 6 | Blocked by: 36 | Blocks: (wave gate)
   References: draft D9 (medium ~200, bursty); M2 (lazy judging reduces load)
@@ -447,7 +447,7 @@ Your next move: approve to start executing the plan (the worker will build it in
   QA scenarios: happy: seeded login as teacher shows all 4 problems; failure: rerun seed → idempotent (no duplicates) asserted. Evidence .omo/evidence/task-41-pseint-judge.txt
   Commit: Y | docs: seed data and runbook
 
-- [~] 42. Playwright E2E journeys
+- [x] 42. Playwright E2E journeys
   What to do / Must NOT do: e2e/ journeys: (a) student registers w/ class code → sees assignment, opens solve page, gets inline error, fixes, Runs sample, submits → verdict shown; (b) assignment best-count: two submissions → best badge = better one; (c) contest: register pre-start, submit during, scoreboard updates live; (d) forum: post + teacher pin; contest-window lock blocks student reply; (e) teacher anticheat: report shows planted pair + diff viewer; (f) mobile viewport 375px solve page usable. Tests run against the LOCAL docker-compose stack (DOMAIN unset, http://localhost) with seeded data (todo 41); no external infra. Must NOT stub WS (real end-to-end).
   Parallelization: Wave 7 | Blocked by: 26,33,32,25,41 | Blocks: (final)
   References: draft C4 flows; Playwright docs; seeded fixtures
@@ -457,10 +457,10 @@ Your next move: approve to start executing the plan (the worker will build it in
 
 ## Final verification wave
 > Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
-- [~] F1. Plan compliance audit
-- [~] F2. Code quality review
-- [~] F3. Real manual QA
-- [~] F4. Scope fidelity
+- [x] F1. Plan compliance audit
+- [x] F2. Code quality review
+- [x] F3. Real manual QA
+- [x] F4. Scope fidelity
 
 ## Commit strategy
 - Conventional Commits (feat/fix/test/docs/chore/perf with scope), one per todo as annotated. Branch strategy: work directly on `main` in this monorepo (single contributor), OR use a task-owned worktree via `$start-work --worktree <path>` when the user asks for PR/branch mode. Every commit must leave the tree green (tests pass) — no WIP commits.

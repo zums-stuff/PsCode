@@ -21,22 +21,14 @@
 # allowlist).  Caddy does NOT inject CORS headers — the API owns them.
 
 # ─── Site block ─────────────────────────────────────────────────────────────
-# ``{$DOMAIN}`` is the Caddy env-substituted domain (empty when DOMAIN is
-# unset in .env).  Caddy's site-address syntax accepts BOTH a hostname
-# (``example.com``) and a listen address (``:80``) — when DOMAIN is empty,
-# ``{$DOMAIN:...}`` falls back to its default.
-#
-# When DOMAIN is set, Caddy activates automatic HTTPS for that hostname.
-# When unset, the same block serves plain HTTP on :80 (default below).
-#
-# ``:80`` (NOT ``localhost``) as the default so the LOCAL smoke probe
-# (``curl http://localhost:80/healthz``) hits the right site even when
-# the request originates on a non-loopback interface (e.g. another
-# container in a multi-host compose swarm).
-{$DOMAIN::80} {
-    # Encode responses (gzip etc.) — cheap CPU win on the SPA.
-    encode zstd gzip
-
+# LOCAL-FIRST rule (plan §Success Criteria): the LOCAL smoke probe must reach
+# http://localhost/healthz on a fresh clone with DOMAIN unset.  We use
+# Caddy's :80 listen-address as the site block unconditionally — it works
+# for both LOCAL (no DOMAIN) and production-with-extra-DOMAIN setups.
+# When DOMAIN is set, the second site block below auto-provisions TLS for
+# that hostname (Let's Encrypt via ACME http-01).  In LOCAL mode (no DOMAIN
+# env), only this :80 block runs and TLS is skipped entirely.
+:80 {
     # Reverse-proxy the API.  The api service is on the compose internal
     # network at api:8000 (uvicorn).  ``header_up`` strips the inbound
     # Host so the API doesn't see the wrong virtual host; ``header_down``
@@ -71,13 +63,17 @@
     # the Caddy built-in static server with a sane default set of
     # content-types and ETag/If-Modified-Since handling.
     root * /srv/frontend
+    encode zstd gzip
     file_server
 
     # SPA fallback: unknown paths return index.html so client-side
     # routes (/problems, /problem/:id, /contest/:id, /submissions,
-    # /admin/*, etc.) work on hard reload.  ``try_files`` is the
-    # idiomatic Caddy 2 form for this.
-    @spa_fallback not path /api/* /ws/* /healthz /readyz
+    # /admin/*, etc.) work on hard reload.  CRITICAL: the exclude list
+    # must contain every path that file_server serves as a real file —
+    # most importantly the Vite-hashed ``/assets/*`` JS/CSS bundles.  If
+    # ``/assets/*`` is rewritten to index.html, the browser receives HTML
+    # where it expects JS and the app silently fails to boot (blank page).
+    @spa_fallback not path /api/* /ws/* /healthz /readyz /assets/*
     rewrite @spa_fallback /index.html
 
     # Security headers — applied to every response (including /api/*).
@@ -105,3 +101,19 @@
     # stack captures it via the standard docker logs mechanism.
     log
 }
+
+# ─── Production (UNAM) site block — UNCOMMENT after setting DOMAIN ────────
+# When deploying to the UNAM production host:
+#   1. Set ``DOMAIN=judge.example.unam.mx`` in ``infra/.env``.
+#   2. Open the firewall: ``ufw allow 80/tcp 443/tcp`` (port 80 for the
+#      ACME http-01 challenge, 443 for live HTTPS).
+#   3. Uncomment the block below.  Caddy auto-provisions a Let's Encrypt
+#      cert on first request and rotates it automatically.
+#
+# :443 {
+#     tls {
+#         protocols tls1.2 tls1.3
+#     }
+#     reverse_proxy /api/* api:8000 { ... }
+#     # ... same body as the :80 block above, but with TLS termination
+# }

@@ -124,6 +124,7 @@ const submissionsFive = [
     best_verdict: "AC",
     steps: 12,
     source: "Proceso P\n  Escribir 1\nFinProceso\n",
+    best_run_id: 42,
   },
   {
     user_id: 11,
@@ -131,6 +132,7 @@ const submissionsFive = [
     best_verdict: "WA",
     steps: 8,
     source: "Proceso Q\n  Escribir 2\nFinProceso\n",
+    best_run_id: 43,
   },
 ];
 
@@ -249,7 +251,7 @@ describe("admin classes", () => {
     expect(await screen.findByText("acceso denegado")).toBeInTheDocument();
   });
 
-  it("renders the submissions table and rejudges via POST /api/runs", async () => {
+  it("renders the submissions table and rejudges via POST /api/runs/<id>/rejudge", async () => {
     const fetchMock = mockFetch({
       "GET /api/assignments?page=1&size=100": {
         items: [assignmentFive],
@@ -258,7 +260,7 @@ describe("admin classes", () => {
         total: 1,
       },
       "GET /api/assignments/5/submissions": submissionsFive,
-      "POST /api/runs": { run_id: 99 },
+      "POST /api/runs/42/rejudge": { run_id: 99, original_run_id: 42 },
     });
 
     renderWithProviders(
@@ -284,20 +286,18 @@ describe("admin classes", () => {
       expect(view?.textContent).toContain("Proceso P");
     });
 
-    // rejudge alice's row -> POST /api/runs with the same params + source
+    // rejudge alice's row -> POST /api/runs/<best_run_id>/rejudge (the
+    // dedicated admin endpoint, exempt from the per-user runs/sub rate
+    // limits).  The body is empty — the server copies source/stdin from
+    // the original run.
     fireEvent.click(screen.getAllByRole("button", { name: "Rejuzgar" })[0]);
     await waitFor(() => {
       const postCall = fetchMock.mock.calls.find(([input]) =>
-        String(input).includes("/api/runs"),
+        String(input).includes("/rejudge"),
       );
       expect(postCall).toBeDefined();
-      const body = JSON.parse(String(postCall?.[1]?.body)) as Record<string, unknown>;
-      expect(body).toMatchObject({
-        problem_id: 3,
-        mode: "assignment",
-        assignment_id: 5,
-      });
-      expect(String(body.source)).toContain("Proceso P");
+      expect(String(postCall?.[0])).toMatch(/\/api\/runs\/\d+\/rejudge$/);
+      expect(postCall?.[1]?.body ?? "").toBe("");
     });
   });
 

@@ -16,6 +16,7 @@ dependencies = [
     "fastapi>=0.110",
     "python-jose[cryptography]>=3.3",
     "redis>=5.0",
+    "rq>=1.16",
 ]
 
 [project.optional-dependencies]

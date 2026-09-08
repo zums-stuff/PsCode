@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useToast } from "../../lib/toast";
+import { useConfirm } from "../../lib/confirm";
 import { t } from "../../lib/i18n";
 import type { Page, ProblemListItem } from "../../lib/types";
 
@@ -10,7 +12,8 @@ import type { Page, ProblemListItem } from "../../lib/types";
 export default function AdminProblems() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "problems"],
@@ -18,13 +21,19 @@ export default function AdminProblems() {
   });
 
   async function handleDelete(id: number) {
-    if (!window.confirm(t("admin.problems.deleteConfirm"))) return;
-    setDeleteError(null);
+    const ok = await confirm({
+      title: t("admin.problems.delete"),
+      message: t("admin.problems.deleteConfirm"),
+      confirmLabel: t("admin.problems.delete"),
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/problems/${id}`);
+      toast.success(t("admin.problems.deleted"));
       await queryClient.invalidateQueries({ queryKey: ["admin", "problems"] });
     } catch {
-      setDeleteError(t("admin.problems.deleteError"));
+      toast.error(t("admin.problems.deleteError"));
     }
   }
 

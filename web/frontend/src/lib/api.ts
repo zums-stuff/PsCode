@@ -1,13 +1,19 @@
 /**
  * API client — fetch wrapper with Bearer token interceptor.
  *
- * Base URL from VITE_API_URL (prod) or http://localhost:8000 (local-first).
- * Non-2xx responses throw ApiError carrying the body's `detail` field.
+ * Base URL resolution:
+ *   - VITE_API_URL set to a non-empty value → absolute URL (e.g. "https://api.example.com").
+ *   - VITE_API_URL set to empty string (LOCAL-FIRST default) → relative URLs
+ *     ("/api/*"), which the browser resolves against the current origin and
+ *     Caddy proxies to the api container.  Same-origin avoids CORS and works
+ *     on the developer laptop (plan §Success Criteria).
+ *
+ * Non-2xx responses throw ApiError carrying the body's ``detail`` field.
  * The token is injected by AuthProvider via setAuthToken() — the server is
  * the source of truth; the client never verifies anything.
  */
 
-const BASE_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const BASE_URL: string = import.meta.env.VITE_API_URL ?? "";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -60,6 +66,41 @@ export const api = {
   delete: <T>(path: string): Promise<T> => request<T>("DELETE", path),
 };
 
+/** List contests with pagination and per-user registration state. */
+export function listContests({
+  page = 1,
+  size = 20,
+}: { page?: number; size?: number } = {}): Promise<
+  import("./types").Page<import("./types").ContestListItem>
+> {
+  const qs = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+  return api.get<import("./types").Page<import("./types").ContestListItem>>(
+    `/api/contests?${qs.toString()}`,
+  );
+}
+
+/**
+ * Current user's runs for a contest (filtered by contest_id server-side).
+ *
+ * NOTE the backend returns a **paginated** Page<RunOut> — `{items, page,
+ * size, total}` — NOT a bare array.  Callers must read `data.items`.
+ */
+export function getContestMyRuns(
+  contestId: number,
+): Promise<import("./types").Page<import("./types").RunOut>> {
+  const qs = new URLSearchParams({
+    contest_id: String(contestId),
+    kind: "contest",
+    size: "100",
+  });
+  return api.get<import("./types").Page<import("./types").RunOut>>(
+    `/api/runs?${qs.toString()}`,
+  );
+}
+
 /** Per-student best runs on an assignment (owning teacher or admin only). */
 export function getAssignmentSubmissions(
   assignmentId: number,
@@ -97,6 +138,41 @@ export function submitPracticeRun(
     mode: "practice",
     stdin,
   });
+}
+
+/**
+ * Enqueue a run (any mode) with a known source — used by the submissions
+ * "Reenviar"/"Reintentar" actions to re-submit an existing run's source as a
+ * fresh run (Bug A). Mirrors POST /api/runs' RunCreateRequest shape.
+ */
+export function createRun(params: {
+  problemId: number;
+  source: string;
+  mode: "practice" | "assignment" | "contest";
+  assignmentId?: number | null;
+  contestId?: number | null;
+}): Promise<{ run_id: number }> {
+  return api.post<{ run_id: number }>("/api/runs", {
+    problem_id: params.problemId,
+    source: params.source,
+    mode: params.mode,
+    assignment_id: params.assignmentId ?? null,
+    contest_id: params.contestId ?? null,
+  });
+}
+
+/**
+ * Re-grade an existing run as a fresh submission (teacher/admin only).
+ *
+ * Hits ``POST /api/runs/{run_id}/rejudge`` which copies the source/stdin
+ * and re-enqueues the run through the same worker pipeline.  Exempt from
+ * the per-user runs/submission rate limits (admin action).  Returns the
+ * NEW run id so the caller can poll for the verdict.
+ */
+export function rejudgeRun(runId: number): Promise<{ run_id: number }> {
+  // The endpoint reads everything from the path; send no body to keep
+  // the request a pure POST (no JSON parsing on the server either).
+  return api.post<{ run_id: number }>(`/api/runs/${runId}/rejudge`);
 }
 
 /** List paginated runs (todo 31 submissions + history). */
@@ -171,6 +247,61 @@ export function pinForumThread(
   return api.patch<import("./types").ForumThread>(
     `/api/threads/${threadId}`,
     { pinned },
+  );
+}
+
+/** Fetch a single thread by id (forums index tab). */
+export function getSingleThread(
+  threadId: number,
+): Promise<import("./types").ForumThread> {
+  return api.get<import("./types").ForumThread>(`/api/threads/${threadId}`);
+}
+
+/** List a thread's posts (forums index / thread detail). */
+export function listPosts(
+  threadId: number,
+): Promise<import("./types").ForumPost[]> {
+  return listForumPosts(threadId);
+}
+
+/** Create a new thread (forums index modal / per-problem form). */
+export function createThread(
+  problemId: number,
+  title: string,
+  body: string,
+): Promise<import("./types").ForumThread> {
+  return createForumThread(problemId, title, body);
+}
+
+/** Post a reply (thread detail / index). `parentId` is optional. */
+export function createPost(
+  threadId: number,
+  body: string,
+  parentId?: number,
+): Promise<import("./types").ForumPost> {
+  return createForumPost(threadId, body, parentId ?? null);
+}
+
+/**
+ * Paginated forum index across all problems the user can see (forums tab).
+ * Optional problem_id / class_id filters are forwarded as query params.
+ */
+export function listAllThreads(opts?: {
+  page?: number;
+  size?: number;
+  problemId?: number;
+  classId?: number;
+}): Promise<import("./types").Page<import("./types").ThreadIndexItem>> {
+  const qs = new URLSearchParams();
+  if (opts?.page !== undefined && opts.page > 1) {
+    qs.set("page", String(opts.page));
+  }
+  if (opts?.size !== undefined) qs.set("size", String(opts.size));
+  if (opts?.problemId !== undefined) qs.set("problem_id", String(opts.problemId));
+  if (opts?.classId !== undefined) qs.set("class_id", String(opts.classId));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return api.get<import("./types").Page<import("./types").ThreadIndexItem>>(
+    `/api/threads${suffix}`,
   );
 }
 

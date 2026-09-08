@@ -109,6 +109,9 @@ export default function AdminContestDetail() {
 
   function refresh() {
     void queryClient.invalidateQueries({ queryKey: ["admin", "contest", id] });
+    void queryClient.invalidateQueries({
+      queryKey: ["admin", "contest", id, "teams"],
+    });
   }
 
   return (
@@ -194,7 +197,6 @@ export default function AdminContestDetail() {
         contestId={contest.id}
         phase={phase}
         teamsEnabled={contest.teams_enabled}
-        teams={teamsQuery.data ?? []}
         onChanged={refresh}
       />
 
@@ -204,6 +206,7 @@ export default function AdminContestDetail() {
         scoringMode={contest.scoring_mode}
         teamsEnabled={contest.teams_enabled}
         teams={teamsQuery.data ?? []}
+        problems={problemsQuery.data ?? []}
         participants={participantsQuery.data ?? []}
       />
     </div>

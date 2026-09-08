@@ -70,6 +70,13 @@ class _Contest:
 
 
 @dataclass
+class _Problem:
+    id: int
+    expected_complexity: str = "O(1)"
+    step_budget: int | None = None
+
+
+@dataclass
 class _TestCase:
     id: int
     input: str = ""
@@ -89,6 +96,7 @@ class _SandboxResult:
         default_factory=lambda: {"steps": 5, "error": None, "exit_ok": True, "output_bytes": 2}
     )
     error: dict | None = None
+    wall_ms: int = 0
 
 
 @dataclass
@@ -98,6 +106,7 @@ class _Recorder:
     runs: dict[int, _Run] = field(default_factory=dict)
     contests: dict[int, _Contest] = field(default_factory=dict)
     test_cases: dict[int, list[_TestCase]] = field(default_factory=dict)
+    problems: dict[int, _Problem] = field(default_factory=dict)
 
     status_flips: list[tuple[int, str]] = field(default_factory=list)
     summary_verdicts: list[tuple[int, str | None]] = field(default_factory=list)
@@ -109,8 +118,8 @@ class _Recorder:
     def fetch_run(self, run_id: int) -> _Run | None:
         return self.runs.get(run_id)
 
-    def fetch_problem(self, _problem_id: int) -> None:
-        return None  # not consumed by process_run today
+    def fetch_problem(self, problem_id: int) -> _Problem | None:
+        return self.problems.get(problem_id)
 
     def fetch_contest(self, contest_id: int | None) -> _Contest | None:
         return self.contests.get(contest_id) if contest_id is not None else None
@@ -170,6 +179,7 @@ def _hooks_from(rec: _Recorder) -> worker.PersistHooks:
 def _seed_practice(rec: _Recorder, *, run_id: int = 1, source: str | None = None) -> None:
     rec.runs[run_id] = _Run(id=run_id, kind="practice", source=source or _Run.__dataclass_fields__["source"].default)
     rec.test_cases[100] = [_TestCase(id=1, input="", expected_output="1\n")]
+    rec.problems.setdefault(100, _Problem(id=100, expected_complexity="O(1)", step_budget=None))
 
 
 # ---------------------------------------------------------------------------
@@ -619,18 +629,38 @@ def test_anticheat_enqueue_called_per_run() -> None:
 
 
 def test_verdict_from_sandbox_happy() -> None:
-    sb = _SandboxResult(report={"steps": 10, "error": None, "exit_ok": True})
-    verdict, err, steps, _wall, _out = worker._verdict_from_sandbox(sb)
+    sb = _SandboxResult(
+        output="",
+        report={"steps": 10, "error": None, "exit_ok": True},
+    )
+    verdict, err, steps, _wall, _out = worker._verdict_from_sandbox(sb, "")
     assert verdict == worker.VERDICT_OK
     assert err is None
     assert steps == 10
+
+
+def test_verdict_from_sandbox_happy_with_matching_output() -> None:
+    """Default _SandboxResult output ("1\n") matches expected_output="1\n"."""
+    sb = _SandboxResult(report={"steps": 10, "error": None, "exit_ok": True})
+    verdict, err, steps, _wall, _out = worker._verdict_from_sandbox(sb, "1\n")
+    assert verdict == worker.VERDICT_OK
+    assert err is None
+    assert steps == 10
+
+
+def test_verdict_from_sandbox_wa_on_output_mismatch() -> None:
+    """No engine error + output mismatch → WA (not OK)."""
+    sb = _SandboxResult(report={"steps": 10, "error": None, "exit_ok": True})
+    verdict, err, _steps, _wall, _out = worker._verdict_from_sandbox(sb, "42\n")
+    assert verdict == worker.VERDICT_WA
+    assert err is None
 
 
 def test_verdict_from_sandbox_tle() -> None:
     sb = _SandboxResult(report={
         "steps": 99_999, "error": {"code": "ERR_STEP_LIMIT"}, "exit_ok": False,
     })
-    verdict, err, _steps, _wall, _out = worker._verdict_from_sandbox(sb)
+    verdict, err, _steps, _wall, _out = worker._verdict_from_sandbox(sb, "")
     assert verdict == worker.VERDICT_TLE
     assert err is not None
 
@@ -639,7 +669,7 @@ def test_verdict_from_sandbox_ce_parse_error() -> None:
     sb = _SandboxResult(report={
         "steps": 0, "error": {"code": "ERR_PARSE"}, "exit_ok": False,
     })
-    verdict, _, _, _, _ = worker._verdict_from_sandbox(sb)
+    verdict, _, _, _, _ = worker._verdict_from_sandbox(sb, "")
     assert verdict == worker.VERDICT_CE
 
 
@@ -647,7 +677,7 @@ def test_verdict_from_sandbox_re_default() -> None:
     sb = _SandboxResult(report={
         "steps": 4, "error": {"code": "ERR_DIVZERO"}, "exit_ok": False,
     })
-    verdict, _, _, _, _ = worker._verdict_from_sandbox(sb)
+    verdict, _, _, _, _ = worker._verdict_from_sandbox(sb, "")
     assert verdict == worker.VERDICT_RE
 
 
@@ -863,6 +893,346 @@ def test_process_run_quietly_drops_missing_runs() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bug #1 fix: per-case input + output comparison wired through the worker.
+# ---------------------------------------------------------------------------
+
+
+def test_process_run_correct_program_yields_ac_with_real_metrics() -> None:
+    """A correct program → AC, non-zero steps/wall_ms, output matches expected."""
+    rec = _Recorder()
+    run_id = 100
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="", expected_output="55\n"),
+    ]
+    hooks = _hooks_from(rec)
+
+    captured_inputs: list[bytes] = []
+
+    def fake_sandbox(src: bytes, *, input: bytes | None = None, **_k: Any) -> _SandboxResult:
+        captured_inputs.append(input if input is not None else b"")
+        return _SandboxResult(
+            output="55\n",
+            report={
+                "steps": 17,
+                "error": None,
+                "exit_ok": True,
+                "output_bytes": 3,
+            },
+            wall_ms=42,
+        )
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert result["status"] == worker.STATUS_DONE
+    assert result["verdict"] == worker.VERDICT_AC
+    case = result["cases"][0]
+    assert case["verdict"] == worker.VERDICT_OK  # OK = per-case AC
+    assert case["steps"] == 17  # real, not 0
+    assert case["wall_ms"] == 42  # real, not 0
+    # The per-case loop called the sandbox with input=b"" (the empty tc input).
+    assert captured_inputs == [b""]
+
+
+def test_process_run_wrong_output_yields_wa() -> None:
+    """A program whose stdout doesn't match expected_output → WA."""
+    rec = _Recorder()
+    run_id = 101
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="", expected_output="42\n"),
+    ]
+    hooks = _hooks_from(rec)
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        return _SandboxResult(
+            output="0\n",
+            report={
+                "steps": 3,
+                "error": None,
+                "exit_ok": True,
+                "output_bytes": 2,
+            },
+        )
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert result["verdict"] == worker.VERDICT_WA
+    case = result["cases"][0]
+    assert case["verdict"] == worker.VERDICT_WA
+    # Persist log should record WA too.
+    persisted = rec.persisted[-1][1]
+    assert persisted[0]["verdict"] == worker.VERDICT_WA
+
+
+def test_process_run_persists_real_stdout_per_case() -> None:
+    """The worker writes the actual program stdout into TestResult.output."""
+    rec = _Recorder()
+    run_id = 102
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="", expected_output="Hola Mundo\n"),
+    ]
+    hooks = _hooks_from(rec)
+
+    captured: list[tuple[int, list[dict]]] = []
+
+    def capturing_persist(run_id_: int, cases: list) -> None:
+        captured.append((run_id_, [
+            {"case_index": c.case_index, "verdict": c.verdict,
+             "output": c.output, "steps": c.steps, "wall_ms": c.wall_ms}
+            for c in cases
+        ]))
+
+    hooks.persist_test_result = capturing_persist
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        return _SandboxResult(
+            output="Hola Mundo\n",
+            report={"steps": 5, "error": None, "exit_ok": True, "output_bytes": 11},
+        )
+
+    worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert len(captured) == 1
+    _, cases = captured[0]
+    assert cases[0]["output"] == "Hola Mundo\n"
+    assert cases[0]["steps"] == 5
+    assert cases[0]["verdict"] == worker.VERDICT_OK
+
+
+def test_process_run_infinite_loop_yields_tle() -> None:
+    """An engine that reports ERR_STEP_LIMIT → TLE (not RE).
+
+    Mock the engine: no actual infinite loop runs, the report carries the
+    step-limit error code directly.
+    """
+    rec = _Recorder()
+    run_id = 103
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="", expected_output="never\n"),
+    ]
+    hooks = _hooks_from(rec)
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        return _SandboxResult(
+            output="1\n2\n3\n",
+            report={
+                "steps": 1000,
+                "error": {
+                    "code": "ERR_STEP_LIMIT",
+                    "message": "step budget exceeded",
+                    "line": None,
+                    "col": None,
+                },
+                "exit_ok": False,
+                "output_bytes": 6,
+            },
+        )
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert result["verdict"] == worker.VERDICT_TLE
+    case = result["cases"][0]
+    assert case["verdict"] == worker.VERDICT_TLE
+    # The error code is preserved in the per-case error dict.
+    persisted = rec.persisted[-1][1]
+    assert persisted[0]["verdict"] == worker.VERDICT_TLE
+
+
+def test_process_run_passes_wall_timeout_to_sandbox_runner() -> None:
+    """The worker supplies DEFAULT_WALL_TIMEOUT_S to the sandbox runner.
+
+    This is the M9 wall-clock bound — the wrapper converts subprocess
+    TimeoutExpired into ERR_STEP_LIMIT so an infinite loop verdicts TLE
+    even when the engine's own step budget isn't reached.
+    """
+    rec = _Recorder()
+    run_id = 1035
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [_TestCase(id=1, input="", expected_output="x\n")]
+    hooks = _hooks_from(rec)
+
+    captured: list[dict] = []
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        captured.append(dict(_k))
+        return _SandboxResult(output="x\n")
+
+    worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+    assert len(captured) == 1
+    assert captured[0].get("wall_timeout_s") == worker.DEFAULT_WALL_TIMEOUT_S
+
+
+def test_process_run_per_case_input_plumbing() -> None:
+    """Same source, two cases with different inputs and expected outputs.
+
+    Verifies the worker passes each case's `input` to the sandbox wrapper
+    (so the engine sees different stdin per case) and that the comparison
+    uses each case's `expected_output`.
+    """
+    rec = _Recorder()
+    run_id = 104
+    rec.runs[run_id] = _Run(id=run_id, kind="assignment")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="2 3\n", expected_output="5\n"),
+        _TestCase(id=2, input="10 20\n", expected_output="30\n"),
+    ]
+    hooks = _hooks_from(rec)
+
+    # Sandbox echoes the input as output (so matching expected_output requires
+    # the correct input plumbing).
+    def fake_sandbox(_src: bytes, *, input: bytes | None = None, **_k: Any) -> _SandboxResult:
+        if input == b"2 3\n":
+            return _SandboxResult(output="5\n")
+        if input == b"10 20\n":
+            return _SandboxResult(output="30\n")
+        return _SandboxResult(output="")
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert result["verdict"] == worker.VERDICT_AC
+    assert len(result["cases"]) == 2
+    # Both cases AC — proving the right expected_output was matched for each.
+    assert result["cases"][0]["verdict"] == worker.VERDICT_OK
+    assert result["cases"][1]["verdict"] == worker.VERDICT_OK
+
+
+def test_process_run_per_case_input_mismatch_yields_wa() -> None:
+    """If only ONE case's expected_output matches, the summary reflects that.
+
+    Same source; case 0 outputs the expected value, case 1 outputs the
+    wrong value. Assignment mode runs all cases; the summary is the
+    first non-OK → WA.
+    """
+    rec = _Recorder()
+    run_id = 105
+    rec.runs[run_id] = _Run(id=run_id, kind="assignment")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="1\n", expected_output="1\n"),
+        _TestCase(id=2, input="2\n", expected_output="99\n"),  # mismatch
+    ]
+    hooks = _hooks_from(rec)
+
+    def fake_sandbox(_src: bytes, *, input: bytes | None = None, **_k: Any) -> _SandboxResult:
+        return _SandboxResult(output=input.decode() if input else "")
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert result["verdict"] == worker.VERDICT_WA
+    assert result["cases"][0]["verdict"] == worker.VERDICT_OK
+    assert result["cases"][1]["verdict"] == worker.VERDICT_WA
+
+
+def test_process_run_cf_lazy_stop_on_first_wa() -> None:
+    """CF mode: stop at the first WA case (first non-OK)."""
+    rec = _Recorder()
+    run_id = 106
+    rec.runs[run_id] = _Run(id=run_id, kind="contest", contest_id=200)
+    rec.contests[200] = _Contest(id=200, scoring_mode="cf")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="", expected_output="ok\n"),
+        _TestCase(id=2, input="", expected_output="ok\n"),
+        _TestCase(id=3, input="", expected_output="ok\n"),
+    ]
+    hooks = _hooks_from(rec)
+
+    call_count = {"n": 0}
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            return _SandboxResult(output="WRONG\n")  # 2nd case WA
+        return _SandboxResult(output="ok\n")
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    # CF lazy-stops after the first non-OK case.
+    assert call_count["n"] == 2
+    assert result["verdict"] == worker.VERDICT_WA
+
+
+@pytest.mark.parametrize(
+    "got,expected,equal",
+    [
+        # Exact-mode contract (todo 11): CRLF stripped, trailing whitespace
+        # rstripped, trailing newline preserved (the empty element after a
+        # final \n is significant — split("\n") yields one extra "").
+        ("55\n", "55\n", True),
+        ("55\n", "55", False),  # trailing newline is part of the output
+        ("55\r\n", "55\n", True),  # CRLF normalised to LF
+        ("55   \n", "55\n", True),  # trailing spaces rstripped
+        ("55\n\n", "55\n", False),  # blank line is significant
+        ("", "", True),
+        ("", "\n", False),
+        ("1\n2\n", "1\n2\n", True),
+        ("1\n3\n", "1\n2\n", False),  # first diff at line 2
+    ],
+)
+def test_worker_comparison_contract_end_to_end(
+    got: str, expected: str, equal: bool,
+) -> None:
+    """Wire the pseint_judge.compare contract through the worker per-case path."""
+    expected_verdict = worker.VERDICT_OK if equal else worker.VERDICT_WA
+    rec = _Recorder()
+    run_id = 200
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="", expected_output=expected),
+    ]
+    hooks = _hooks_from(rec)
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        return _SandboxResult(output=got)
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+
+    assert result["cases"][0]["verdict"] == expected_verdict, (
+        f"got={got!r} expected={expected!r} → {expected_verdict}"
+    )
+
+
+def test_process_run_default_sandbox_runner_signature_supports_input() -> None:
+    """The default sandbox_runner (real run_sandboxed) accepts input= kwargs."""
+    import inspect
+    sig = inspect.signature(worker.run_sandboxed)
+    assert "input" in sig.parameters
+    # Default to None so legacy callers (CLI, tests) keep working.
+    assert sig.parameters["input"].default is None
+
+
+def test_sandbox_result_dataclass_has_wall_ms_field() -> None:
+    """The SandboxResult dataclass exposes wall_ms (worker reads it)."""
+    from run_sandboxed import SandboxResult
+    sb = SandboxResult(container_exit_code=0, output="x")
+    assert hasattr(sb, "wall_ms")
+    assert sb.wall_ms == 0
+    sb2 = SandboxResult(
+        container_exit_code=0, output="x", wall_ms=99,
+    )
+    assert sb2.wall_ms == 99
+
+
+# ---------------------------------------------------------------------------
 # Sandbox wrapper contract (the worker uses it but never imports subprocess)
 # ---------------------------------------------------------------------------
 
@@ -871,3 +1241,220 @@ def test_default_sandbox_runner_is_run_sandboxed() -> None:
     """Default ``sandbox_runner`` is the actual wrapper (no silent mock)."""
     from run_sandboxed import run_sandboxed
     assert worker.process_run.__kwdefaults__["sandbox_runner"] is run_sandboxed
+
+
+# ---------------------------------------------------------------------------
+# Bug #2 fix: per-case step budget plumbing (todo 13 / SPEC §(k))
+# ---------------------------------------------------------------------------
+
+
+def test_step_budget_for_case_o1_no_override() -> None:
+    """O(1) complexity, no override → 2*50 + 1000 = 1100."""
+    problem = _Problem(id=1, expected_complexity="O(1)", step_budget=None)
+    assert worker._step_budget_for_case(problem, "") == 1100
+
+
+def test_step_budget_for_case_o1_with_override() -> None:
+    """O(1) with override → the operator's value wins, then 2*X + 1000."""
+    problem = _Problem(id=1, expected_complexity="O(1)", step_budget=50)
+    # base = 50 (override); budget = 2*50 + 1000 = 1100
+    assert worker._step_budget_for_case(problem, "") == 1100
+
+
+def test_step_budget_for_case_o_n_scales_with_n() -> None:
+    """O(n) with n_estimate=10 → expected = 20*10 + 50 = 250; budget = 1500."""
+    problem = _Problem(id=1, expected_complexity="O(n)", step_budget=None)
+    # n = len("1 2 3 4 5 6 7 8 9 10".split()) = 10
+    assert worker._step_budget_for_case(problem, "1 2 3 4 5 6 7 8 9 10") == 1500
+
+
+def test_step_budget_for_case_hello_world_holamundo() -> None:
+    """HolaMundo (O(1) + step_budget=50 in seed) → 1100.
+
+    Matches the SPEC §(k) pin: HolaMundo's hard TLE cap is 1100.  The
+    user's "loop 10000 times" program in the bug report runs ~40000
+    steps — well over 1100 — so it verdicts TLE(step) before the wall
+    timeout fires.
+    """
+    problem = _Problem(id=1, expected_complexity="O(1)", step_budget=50)
+    # The user's bug repro input was "Hola" → 1 token → n=1, but
+    # O(1) doesn't depend on n; the budget is the same.
+    assert worker._step_budget_for_case(problem, "Hola") == 1100
+
+
+def test_step_budget_for_case_other_complexity_uses_override() -> None:
+    """Complexity ``"other"`` → no auto formula → operator's override wins."""
+    problem = _Problem(id=1, expected_complexity="other", step_budget=4242)
+    assert worker._step_budget_for_case(problem, "anything") == 4242
+
+
+def test_step_budget_for_case_other_complexity_no_override_falls_back() -> None:
+    """``"other"`` with no override → a sane fallback (NOT infinite).
+
+    The SPEC requires a budget so the engine enforces TLE(step) on
+    abusive programs even when the operator hasn't configured a
+    per-problem override.  The fallback is generous but finite.
+    """
+    problem = _Problem(id=1, expected_complexity="other", step_budget=None)
+    budget = worker._step_budget_for_case(problem, "x")
+    assert budget > 0
+    assert budget < 1_000_000  # not absurd
+
+
+def test_step_budget_for_case_unknown_complexity_no_override_falls_back() -> None:
+    """Unknown complexity label → fallback (defensive against future SPEC edits)."""
+    problem = _Problem(id=1, expected_complexity="unknown-xyz", step_budget=None)
+    budget = worker._step_budget_for_case(problem, "x")
+    assert budget > 0
+    assert budget < 1_000_000
+
+
+def test_step_budget_for_case_none_problem_returns_safe_default() -> None:
+    """Defensive: a missing problem is a worker bug but we don't crash."""
+    budget = worker._step_budget_for_case(None, "x")
+    assert budget > 0
+    assert budget < 1_000_000
+
+
+def test_step_budget_for_case_treats_none_input_as_empty() -> None:
+    """``tc_input=None`` is normalised to ``""`` so n_estimate == 0."""
+    problem = _Problem(id=1, expected_complexity="O(1)", step_budget=None)
+    assert worker._step_budget_for_case(problem, None) == 1100
+    assert worker._step_budget_for_case(problem, "") == 1100
+
+
+def test_process_run_passes_max_steps_to_sandbox_runner() -> None:
+    """The worker computes and forwards a per-case budget via ``max_steps=``.
+
+    The fixture seeds an O(1) problem with step_budget=50 → expected 50
+    for the override path → budget = 2*50 + 1000 = 1100.  The
+    sandbox_runner fake captures the kwargs and we assert the value.
+    """
+    rec = _Recorder()
+    run_id = 200
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [_TestCase(id=1, input="Hola", expected_output="Hola\n")]
+    rec.problems[100] = _Problem(id=100, expected_complexity="O(1)", step_budget=50)
+    hooks = _hooks_from(rec)
+
+    captured: list[dict] = []
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        captured.append(dict(_k))
+        return _SandboxResult(output="Hola\n")
+
+    worker.process_run(run_id, sandbox_runner=fake_sandbox, hooks=hooks)
+    assert len(captured) == 1
+    assert captured[0].get("max_steps") == 1100  # 2*50 + 1000
+
+
+def test_process_run_per_case_budget_uses_n_estimate() -> None:
+    """For O(n) problems, the budget depends on the per-case input size."""
+    rec = _Recorder()
+    run_id = 201
+    rec.runs[run_id] = _Run(id=run_id, kind="assignment")
+    rec.test_cases[100] = [
+        _TestCase(id=1, input="1", expected_output="1\n"),         # n=1
+        _TestCase(id=2, input="1 2 3 4 5", expected_output="15\n"), # n=5
+    ]
+    rec.problems[100] = _Problem(id=100, expected_complexity="O(n)", step_budget=None)
+    hooks = _hooks_from(rec)
+
+    captured: list[dict] = []
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        captured.append(dict(_k))
+        return _SandboxResult(output="ok\n")
+
+    worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+    assert len(captured) == 2
+    # n=1 → expected = 20*1 + 50 = 70; budget = 2*70 + 1000 = 1140
+    assert captured[0]["max_steps"] == 1140
+    # n=5 → expected = 20*5 + 50 = 150; budget = 2*150 + 1000 = 1300
+    assert captured[1]["max_steps"] == 1300
+
+
+def test_process_run_budget_is_finite_even_without_problem() -> None:
+    """A problem-less run still gets a finite budget (defensive)."""
+    rec = _Recorder()
+    run_id = 202
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [_TestCase(id=1, input="", expected_output="ok\n")]
+    # problems dict is empty (no _seed_practice for this id)
+    hooks = _hooks_from(rec)
+
+    captured: list[dict] = []
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        captured.append(dict(_k))
+        return _SandboxResult(output="ok\n")
+
+    worker.process_run(run_id, sandbox_runner=fake_sandbox, hooks=hooks)
+    assert captured[0]["max_steps"] > 0
+    assert captured[0]["max_steps"] < 1_000_000
+
+
+def test_process_run_tle_loop_with_budget_yields_tle() -> None:
+    """End-to-end: an engine returning ERR_STEP_LIMIT (loop hit the
+    budget) classifies as TLE — this is the bug-repro path.  The
+    sandbox runner returns the engine's report as if the engine hit
+    the budget; the worker persists TLE.
+    """
+    rec = _Recorder()
+    run_id = 203
+    rec.runs[run_id] = _Run(id=run_id, kind="practice")
+    rec.test_cases[100] = [_TestCase(id=1, input="Hola", expected_output="Hola\n")]
+    rec.problems[100] = _Problem(id=100, expected_complexity="O(1)", step_budget=50)
+    hooks = _hooks_from(rec)
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        # Simulate the engine hitting the budget at step 1140.
+        return _SandboxResult(
+            output="Hola\n",
+            report={
+                "steps": 1100,
+                "error": {
+                    "code": "ERR_STEP_LIMIT",
+                    "message": "límite de pasos excedido (máximo 1100)",
+                    "line": None,
+                    "col": None,
+                },
+                "exit_ok": False,
+                "output_bytes": 5,
+            },
+        )
+
+    result = worker.process_run(
+        run_id, sandbox_runner=fake_sandbox, hooks=hooks,
+    )
+    assert result["verdict"] == worker.VERDICT_TLE
+    assert result["cases"][0]["steps"] == 1100
+    persisted = rec.persisted[-1][1]
+    assert persisted[0]["verdict"] == worker.VERDICT_TLE
+
+
+def test_process_run_ce_short_circuit_does_not_consult_problem_budget() -> None:
+    """CE: parse fails → no per-case run → no budget needed.  This pins
+    that the budget plumbing doesn't crash even when ``fetch_problem``
+    returns nothing AND the CE path is taken (no test cases iterated).
+    """
+    rec = _Recorder()
+    run_id = 204
+    rec.runs[run_id] = _Run(
+        id=run_id,
+        kind="practice",
+        source="Proceso X\n  Si 1 Entonces\nFinProceso\n",
+    )
+    rec.test_cases[100] = [_TestCase(id=1)]
+    # Note: problems dict is empty.
+    hooks = _hooks_from(rec)
+    sandbox_calls: list[Any] = []
+
+    def fake_sandbox(_src: bytes, **_k: Any) -> _SandboxResult:
+        sandbox_calls.append(_k)
+        return _SandboxResult()
+
+    worker.process_run(run_id, sandbox_runner=fake_sandbox, hooks=hooks)
+    assert sandbox_calls == []  # CE short-circuits the per-case loop.

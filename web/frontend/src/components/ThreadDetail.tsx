@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
@@ -107,13 +108,17 @@ export default function ThreadDetail({
 
   const grouped = useMemo(() => {
     const posts = postsQuery.data ?? [];
-    const top = posts.filter((p) => p.parent_id === null);
+    const ids = new Set(posts.map((p) => p.id));
+    const top: ForumPost[] = [];
     const children = new Map<number, ForumPost[]>();
     for (const p of posts) {
-      if (p.parent_id !== null) {
+      if (p.parent_id !== null && ids.has(p.parent_id)) {
         const list = children.get(p.parent_id) ?? [];
         list.push(p);
         children.set(p.parent_id, list);
+      } else {
+        // parent_id is null or refers to a post outside this thread (orphan).
+        top.push(p);
       }
     }
     return { top, children };
@@ -171,76 +176,31 @@ export default function ThreadDetail({
       <ul className="forum-posts">
         {grouped.top.map((post) => (
           <li key={post.id} className="forum-post" data-testid={`post-${post.id}`}>
-            <PostBody
+            <PostNode
               post={post}
+              depth={0}
+              tree={grouped.children}
               isModerator={isModerator}
-              editing={editingId === post.id}
+              editingId={editingId}
               editingBody={editingBody}
+              replyTo={replyTo}
+              replyBody={replyBody}
+              replyError={replyError}
+              replying={replying}
               onEditStart={startEdit}
               onEditChange={setEditingBody}
               onEditSave={saveEdit}
-              onEditCancel={() => {
-                setEditingId(null);
-                setEditingBody("");
-              }}
+              onEditCancel={() => { setEditingId(null); setEditingBody(""); }}
               onDelete={(id) => {
                 if (window.confirm(t("forum.thread.deleteConfirm"))) {
                   deleteMutation.mutate(id);
                 }
               }}
+              onReplyStart={(id) => { setReplyTo(id); setReplyBody(""); setReplyError(null); }}
+              onReplyChange={setReplyBody}
+              onReplyCancel={() => { setReplyTo(null); setReplyError(null); }}
+              onReplySubmit={handleReply}
             />
-            <button
-              type="button"
-              onClick={() => {
-                setReplyTo(post.id);
-                setReplyBody("");
-                setReplyError(null);
-              }}
-              data-testid={`reply-to-${post.id}`}
-            >
-              {t("forum.thread.reply")}
-            </button>
-            {replyTo === post.id && (
-              <ReplyForm
-                parentId={post.id}
-                body={replyBody}
-                error={replyError}
-                submitting={replying}
-                onChange={setReplyBody}
-                onCancel={() => {
-                  setReplyTo(null);
-                  setReplyError(null);
-                }}
-                onSubmit={handleReply}
-              />
-            )}
-            {(grouped.children.get(post.id) ?? []).map((child) => (
-              <ul key={child.id} className="forum-replies">
-                <li
-                  className="forum-post forum-reply"
-                  data-testid={`post-${child.id}`}
-                >
-                  <PostBody
-                    post={child}
-                    isModerator={isModerator}
-                    editing={editingId === child.id}
-                    editingBody={editingBody}
-                    onEditStart={startEdit}
-                    onEditChange={setEditingBody}
-                    onEditSave={saveEdit}
-                    onEditCancel={() => {
-                      setEditingId(null);
-                      setEditingBody("");
-                    }}
-                    onDelete={(id) => {
-                      if (window.confirm(t("forum.thread.deleteConfirm"))) {
-                        deleteMutation.mutate(id);
-                      }
-                    }}
-                  />
-                </li>
-              </ul>
-            ))}
           </li>
         ))}
       </ul>
@@ -288,8 +248,162 @@ export default function ThreadDetail({
   );
 }
 
-interface PostBodyProps {
+interface PostNodeProps {
   post: ForumPost;
+  depth: number;
+  tree: Map<number, ForumPost[]>;
+  isModerator: boolean;
+  editingId: number | null;
+  editingBody: string;
+  replyTo: number | null;
+  replyBody: string;
+  replyError: string | null;
+  replying: boolean;
+  onEditStart: (post: ForumPost) => void;
+  onEditChange: (body: string) => void;
+  onEditSave: (id: number) => void;
+  onEditCancel: () => void;
+  onDelete: (id: number) => void;
+  onReplyStart: (id: number) => void;
+  onReplyChange: (body: string) => void;
+  onReplyCancel: () => void;
+  onReplySubmit: (e: React.FormEvent) => void;
+}
+
+const MAX_INLINE = 3;
+const MAX_DEPTH = 5;
+
+function PostNode({
+  post,
+  depth,
+  tree,
+  isModerator,
+  editingId,
+  editingBody,
+  replyTo,
+  replyBody,
+  replyError,
+  replying,
+  onEditStart,
+  onEditChange,
+  onEditSave,
+  onEditCancel,
+  onDelete,
+  onReplyStart,
+  onReplyChange,
+  onReplyCancel,
+  onReplySubmit,
+}: PostNodeProps) {
+  const [showAll, setShowAll] = useState(false);
+  const children = tree.get(post.id) ?? [];
+  const visibleChildren = showAll ? children : children.slice(0, MAX_INLINE);
+
+  return (
+    <article
+      className="post-node"
+      data-depth={depth}
+      data-testid={`postnode-${post.id}`}
+    >
+      <PostBody
+        post={post}
+        isModerator={isModerator}
+        editing={editingId === post.id}
+        editingBody={editingBody}
+        onEditStart={onEditStart}
+        onEditChange={onEditChange}
+        onEditSave={onEditSave}
+        onEditCancel={onEditCancel}
+        onDelete={onDelete}
+      />
+      <button
+        type="button"
+        onClick={() => onReplyStart(post.id)}
+        data-testid={`reply-to-${post.id}`}
+      >
+        {t("forum.thread.reply")}
+      </button>
+      {replyTo === post.id && (
+        <ReplyForm
+          parentId={post.id}
+          body={replyBody}
+          error={replyError}
+          submitting={replying}
+          onChange={onReplyChange}
+          onCancel={onReplyCancel}
+          onSubmit={onReplySubmit}
+        />
+      )}
+      {children.length > MAX_INLINE && !showAll && (
+        <button
+          type="button"
+          className="show-more"
+          onClick={() => setShowAll(true)}
+          data-testid={`show-more-${post.id}`}
+        >
+          + {children.length - MAX_INLINE} {t("forum.thread.showMore")}
+        </button>
+      )}
+      {visibleChildren.length > 0 && (
+        <div className="post-children" data-testid={`children-${post.id}`}>
+          {visibleChildren.map((child) => (
+            <PostNode
+              key={child.id}
+              post={child}
+              depth={Math.min(depth + 1, MAX_DEPTH)}
+              tree={tree}
+              isModerator={isModerator}
+              editingId={editingId}
+              editingBody={editingBody}
+              replyTo={replyTo}
+              replyBody={replyBody}
+              replyError={replyError}
+              replying={replying}
+              onEditStart={onEditStart}
+              onEditChange={onEditChange}
+              onEditSave={onEditSave}
+              onEditCancel={onEditCancel}
+              onDelete={onDelete}
+              onReplyStart={onReplyStart}
+              onReplyChange={onReplyChange}
+              onReplyCancel={onReplyCancel}
+              onReplySubmit={onReplySubmit}
+            />
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+/**
+ * Render a post body, turning fenced ```pseint code blocks into <pre> with
+ * monospaced formatting while keeping the rest as paragraph lines.  No
+ * markdown dependency — just the code-block case that matters for snippets.
+ */
+function renderPostBody(body: string) {
+  const parts: React.ReactNode[] = [];
+  const blocks = body.split(/```/);
+  blocks.forEach((seg, i) => {
+    // Even segments are prose; odd segments are fenced code.
+    if (i % 2 === 1) {
+      const code = seg.replace(/^pseint\s*\n/i, "");
+      parts.push(
+        <pre key={i} className="forum-code-block">
+          <code>{code}</code>
+        </pre>,
+      );
+    } else if (seg.trim().length > 0) {
+      parts.push(
+        <p key={i} className="forum-post-paragraph">
+          {seg}
+        </p>,
+      );
+    }
+  });
+  return parts;
+}
+
+interface PostBodyProps {  post: ForumPost;
   isModerator: boolean;
   editing: boolean;
   editingBody: string;
@@ -338,7 +452,7 @@ function PostBody({
   }
   return (
     <div className="forum-post-body">
-      <p>{post.body}</p>
+      {renderPostBody(post.body)}
       <small>
         #{post.id} · {post.created_at}
       </small>

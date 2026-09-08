@@ -202,9 +202,24 @@ export default function AdminClassDetail() {
             {assignmentsQuery.data.items.map((a, i) => {
               const count = submissionCounts[i]?.data?.length;
               return (
-                <tr key={a.id}>
+                <tr
+                  key={a.id}
+                  className="admin-clickable-row"
+                  onClick={() =>
+                    navigate(
+                      `/admin/classes/${cls!.id}/assignments/${a.id}`,
+                    )
+                  }
+                >
                   <td>{new Date(a.deadline).toLocaleString()}</td>
-                  <td>{problemTitles.get(a.problem_id) ?? `#${a.problem_id}`}</td>
+                  <td>
+                    <Link
+                      to={`/admin/classes/${cls!.id}/assignments/${a.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {problemTitles.get(a.problem_id) ?? `#${a.problem_id}`}
+                    </Link>
+                  </td>
                   <td>{count ?? "—"}</td>
                   <td>
                     {a.status === "open"

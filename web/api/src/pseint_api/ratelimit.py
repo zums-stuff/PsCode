@@ -140,17 +140,33 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Endpoint-specific per-user caps (anonymous requests 401 at the
         # route anyway; the IP/anon checks already cover them).
         if user_id is not None:
-            if path == "/api/runs":
-                allowed, retry_after = self.limiter.check(
-                    f"subs:{user_id}", SUBS_LIMIT
-                )
-                if not allowed:
-                    return self._rate_limited("submissions", SUBS_LIMIT, retry_after)
-                allowed, retry_after = self.limiter.check(
-                    f"runs:{user_id}", RUNS_LIMIT
-                )
-                if not allowed:
-                    return self._rate_limited("runs", RUNS_LIMIT, retry_after)
+            # Rejudge is an administrative action (teacher/admin), not a
+            # student submission — it stays under the global per-user/IP
+            # caps but skips the runs/submission-specific buckets so a
+            # teacher can re-grade a whole class without hitting the limit.
+            is_rejudge = (
+                path.startswith("/api/runs/")
+                and path.endswith("/rejudge")
+            )
+            if path == "/api/runs" or is_rejudge:
+                # Per-user submissions quota applies to fresh submissions
+                # only (rejudges don't count — they're an admin action).
+                if not is_rejudge:
+                    allowed, retry_after = self.limiter.check(
+                        f"subs:{user_id}", SUBS_LIMIT
+                    )
+                    if not allowed:
+                        return self._rate_limited(
+                            "submissions", SUBS_LIMIT, retry_after
+                        )
+                if not is_rejudge:
+                    allowed, retry_after = self.limiter.check(
+                        f"runs:{user_id}", RUNS_LIMIT
+                    )
+                    if not allowed:
+                        return self._rate_limited(
+                            "runs", RUNS_LIMIT, retry_after
+                        )
             elif path == "/api/validate":
                 allowed, retry_after = self.limiter.check(
                     f"subs:{user_id}", SUBS_LIMIT

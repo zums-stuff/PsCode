@@ -4,7 +4,7 @@ import { t } from "../lib/i18n";
 import type { TestCaseOut } from "../lib/types";
 
 interface RunModalProps {
-  problemId: number;
+  problemId: number | null;
   source: string;
   onClose: () => void;
   onRunCreated: (runId: number, stdin: string) => void;
@@ -22,6 +22,7 @@ export default function RunModal({
   onRunCreated,
 }: RunModalProps) {
   const [stdin, setStdin] = useState("");
+  const [cases, setCases] = useState<TestCaseOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -32,11 +33,12 @@ export default function RunModal({
     let cancelled = false;
     async function loadSample() {
       try {
-        const cases = await api.get<TestCaseOut[]>(
+        const allCases = await api.get<TestCaseOut[]>(
           `/api/problems/${problemId}/cases`,
         );
         if (cancelled) return;
-        const sample = cases.find((c) => c.is_sample);
+        setCases(allCases);
+        const sample = allCases.find((c) => c.is_sample);
         setStdin(sample?.input ?? "");
       } catch {
         if (!cancelled) setLoadError(true);
@@ -55,6 +57,9 @@ export default function RunModal({
     setSubmitError(false);
     setQuotaNotice(false);
     try {
+      // Sandbox mode (no problem picked): problem_id is null and the engine
+      // runs the source without grading against any cases.  When a problem
+      // IS picked the API grades against the problem's test cases as usual.
       const res = await api.post<{ run_id: number }>("/api/runs", {
         problem_id: problemId,
         source,
@@ -93,6 +98,29 @@ export default function RunModal({
               rows={6}
               spellCheck={false}
             />
+            {cases.length > 1 && (
+              <details className="run-modal-cases">
+                <summary>{t("solve.run.modal.casesSummary").replace("{count}", String(cases.length))}</summary>
+                <table className="run-modal-cases-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>{t("solve.run.modal.casesInput")}</th>
+                      <th>{t("solve.run.modal.casesExpected")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cases.map((c, i) => (
+                      <tr key={c.id}>
+                        <td>{i + 1}</td>
+                        <td><code>{c.input || t("solve.run.modal.casesEmpty")}</code></td>
+                        <td><code>{c.expected_output || t("solve.run.modal.casesEmpty")}</code></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
+            )}
             {quotaNotice && <p className="error">{t("solve.errors.quota")}</p>}
             {submitError && <p className="error">{t("solve.run.submitError")}</p>}
             <div className="run-modal-actions">

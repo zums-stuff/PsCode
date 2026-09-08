@@ -68,6 +68,7 @@ class ContestTeamOut(BaseModel):
     contest_id: int
     name: str
     created_at: datetime
+    members: list[int] = []
 
 
 def _get_contest_or_404(db: Session, contest_id: int) -> Contest:
@@ -148,11 +149,30 @@ def list_teams(
     user: User = Depends(get_current_user),
 ):
     _get_contest_or_404(db, contest_id)
-    return db.scalars(
+    teams = db.scalars(
         select(ContestTeam)
         .where(ContestTeam.contest_id == contest_id)
         .order_by(ContestTeam.id)
     ).all()
+    members_by_team: dict[int, list[int]] = {}
+    if teams:
+        rows = db.execute(
+            select(ContestTeamMember.team_id, ContestTeamMember.user_id).where(
+                ContestTeamMember.team_id.in_([t.id for t in teams])
+            )
+        ).all()
+        for team_id, user_id in rows:
+            members_by_team.setdefault(team_id, []).append(user_id)
+    return [
+        ContestTeamOut(
+            id=t.id,
+            contest_id=t.contest_id,
+            name=t.name,
+            created_at=t.created_at,
+            members=members_by_team.get(t.id, []),
+        )
+        for t in teams
+    ]
 
 
 @router.post(
@@ -174,7 +194,14 @@ def create_team(
     team = ContestTeam(contest_id=contest_id, name=req.name)
     db.add(team)
     db.commit()
-    return team
+    db.refresh(team)
+    return ContestTeamOut(
+        id=team.id,
+        contest_id=team.contest_id,
+        name=team.name,
+        created_at=team.created_at,
+        members=[],
+    )
 
 
 @router.post(

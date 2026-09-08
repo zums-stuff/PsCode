@@ -1,6 +1,9 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, RequireAuth, RequireRole } from "./lib/auth";
+import { ThemeProvider } from "./lib/theme";
+import { ToastProvider } from "./lib/toast";
+import { ConfirmProvider } from "./lib/confirm";
 import Login from "./routes/Login";
 import Register from "./routes/Register";
 import Forbidden from "./routes/Forbidden";
@@ -8,11 +11,14 @@ import NotFound from "./routes/NotFound";
 import StudentLayout from "./routes/StudentLayout";
 import Problems from "./routes/student/Problems";
 import Placeholder from "./routes/student/Placeholder";
+import Practice from "./routes/Practice";
 import Solve from "./routes/Solve";
 import Submissions from "./routes/Submissions";
 import ProblemResults from "./routes/ProblemResults";
 import Contest from "./routes/Contest";
+import Contests from "./routes/Contests";
 import Forum from "./routes/Forum";
+import ForumIndex from "./routes/ForumIndex";
 import AdminLayout from "./routes/admin/AdminLayout";
 import AdminDashboard from "./routes/admin/AdminDashboard";
 import AdminProblems from "./routes/admin/AdminProblems";
@@ -35,7 +41,10 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <ThemeProvider>
+        <ToastProvider>
+        <ConfirmProvider>
+        <AuthProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -52,11 +61,11 @@ export default function App() {
               <Route index element={<Problems />} />
               <Route path="problem/:id" element={<Solve />} />
               <Route path="problem/:id/results" element={<ProblemResults />} />
-              <Route path="practice" element={<Placeholder i18nKey="student.practice" />} />
+              <Route path="practice" element={<Practice />} />
               <Route path="submissions" element={<Submissions />} />
-              <Route path="forum" element={<Placeholder i18nKey="student.forum" />} />
+              <Route path="forum" element={<ForumIndex />} />
               <Route path="forum/problem/:id" element={<Forum />} />
-              <Route path="contests" element={<Placeholder i18nKey="student.contests" />} />
+              <Route path="contests" element={<Contests />} />
               <Route path="contest/:id" element={<Contest />} />
             </Route>
             <Route
@@ -78,6 +87,10 @@ export default function App() {
                 path="classes/:id/assignments/new"
                 element={<AdminAssignmentNew />}
               />
+              <Route
+                path="classes/:class_id/assignments/:assignment_id"
+                element={<AdminAssignmentDetail />}
+              />
               <Route path="assignments/:id" element={<AdminAssignmentDetail />} />
               <Route path="contests" element={<AdminContests />} />
               <Route path="contests/new" element={<AdminContestNew />} />
@@ -88,6 +101,9 @@ export default function App() {
           </Routes>
         </BrowserRouter>
       </AuthProvider>
+        </ConfirmProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

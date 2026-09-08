@@ -337,11 +337,65 @@ class Evaluator:
         if isinstance(target, ArrayIndex):
             self._exec_array_assignment(target, stmt.value, stmt)
             return
+        # Typed declaration without an initializer (e.g. ``Cadena s``):
+        # declare the variable with its fixed type and assign the type's
+        # zero value.  Mirrors PseInt's official semantics where ``Cadena s``
+        # is sugar for ``s <- ""`` with a type tag.
+        if stmt.value is None:
+            if stmt.type_name is None:
+                raise self._err(
+                    "ERR_TYPE",
+                    "asignación sin valor ni tipo declarado",
+                    stmt,
+                )
+            declared = stmt.type_name.lower()
+            existing = self._env.get_type(target.name)
+            if existing is not None and existing != declared:
+                raise self._err(
+                    "ERR_TYPE",
+                    f"tipo contradictorio para {target.name}: "
+                    f"{existing} vs {declared}",
+                    stmt,
+                )
+            self._env.declare(target.name, stmt.type_name)
+            zero = self._zero_value(declared, stmt)
+            self._env.set(target.name, zero.value, zero.type)
+            return
         v = self._eval_expr(stmt.value)
         declared = self._env.get_type(target.name)
+        # Typed assignment with initializer (e.g. ``Entero i <- 5``): the
+        # type_name tag overrides any earlier declaration (and is recorded
+        # in the env for downstream reads).
+        if stmt.type_name is not None:
+            declared = stmt.type_name.lower()
         if declared is not None and declared != v.type:
             v = self._convert(v, declared, stmt)
         self._env.set(target.name, v.value, v.type)
+
+    def _zero_value(self, type_name: str, node: object) -> Value:
+        """Return the SPEC §(c) zero value for a scalar type.
+
+        - Entero → 0
+        - Real → 0.0
+        - Logico → Falso
+        - Cadena → ""
+        - Caracter → "" (PseInt allows an empty Caracter only as the
+          default before first assignment; the first ``Leer`` or ``<-``
+          coerces it to the actual 1-char value)
+        """
+        if type_name == ENTERO:
+            return Value(0, ENTERO)
+        if type_name == REAL:
+            return Value(0.0, REAL)
+        if type_name == LOGICO:
+            return Value(False, LOGICO)
+        if type_name == CADENA:
+            return Value("", CADENA)
+        if type_name == CARACTER:
+            return Value("", CARACTER)
+        raise self._err(
+            "ERR_TYPE", f"tipo no soportado en declaración: {type_name}", node
+        )
 
     def _exec_definir(self, stmt: Definir) -> None:
         for name_node in stmt.names:

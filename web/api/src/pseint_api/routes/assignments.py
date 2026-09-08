@@ -71,6 +71,7 @@ class AssignmentSubmissionOut(BaseModel):
     best_verdict: str | None
     steps: int | None
     source: str
+    best_run_id: int | None = None  # the run_id of the best submission, for rejudge
 
 
 @router.get(
@@ -117,6 +118,7 @@ def list_assignment_submissions(
             best_verdict=run.summary_verdict,
             steps=run.steps,
             source=run.source,
+            best_run_id=run.id,
         )
         for run in best.values()
     ]

@@ -129,7 +129,9 @@ def test_build_docker_run_is_byte_exact(seccomp_profile_path: Path) -> None:
         "--user", "65534:65534",
         "--stop-timeout", "8",
         "-i",
-        "pseint-judge-worker:latest",
+        # DEFAULT_IMAGE — engine sandbox image (separate tag from the
+        # rqworker pool image to avoid collision when compose builds both).
+        run_sandboxed.DEFAULT_IMAGE,
     ]
     assert cmd == expected
 
@@ -156,7 +158,7 @@ def test_build_docker_run_required_flag_present(
     i = cmd.index(flag)
     if value is not None:
         assert cmd[i + 1] == value
-    assert cmd[-1] == "pseint-judge-worker:latest"
+    assert cmd[-1].endswith(":latest")  # DEFAULT_IMAGE — exact tag pinned below
 
 
 def test_build_docker_run_includes_both_security_opts(
@@ -169,9 +171,15 @@ def test_build_docker_run_includes_both_security_opts(
 
 
 def test_build_docker_run_seccomp_profile_is_repo_relative() -> None:
-    """Default seccomp profile must point to infra/seccomp/default.json."""
+    """Default seccomp profile must point to infra/seccomp/default.json.
+
+    Resolves relative to the wrapper's own location so the default works
+    in both dev mode and inside the rqworker container.
+    """
     cmd = run_sandboxed.build_docker_run()
-    assert "seccomp=infra/seccomp/default.json" in cmd
+    expected = str(run_sandboxed.SECCOMP_REL_PATH)
+    assert f"seccomp={expected}" in cmd
+    assert expected.endswith("infra/seccomp/default.json")
 
 
 def test_build_docker_run_supports_optional_container_name(
@@ -333,11 +341,11 @@ def test_run_sandboxed_uses_image_from_call(
     run_sandboxed.run_sandboxed(
         b"x",
         seccomp_profile=seccomp_profile_path,
-        image="pseint-judge-worker:dev",
+        image="pseint-judge-engine:dev",
         runner=runner,
     )
     cmd, _ = holder["calls"][0]
-    assert cmd[-1] == "pseint-judge-worker:dev"
+    assert cmd[-1] == "pseint-judge-engine:dev"
 
 
 def test_run_sandboxed_uses_name_from_call(
@@ -586,6 +594,209 @@ def test_entrypoint_writes_source_to_tmpfs_path() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bug #1 fix: per-case input plumbing (stdin sentinel split)
+# ---------------------------------------------------------------------------
+
+
+def test_run_sandboxed_input_none_keeps_legacy_stdin(
+    seccomp_profile_path: Path,
+) -> None:
+    """When input=None, stdin is the source bytes only (no sentinel)."""
+    proc = _FakeProc(
+        stdout=b"55\n" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0
+    )
+    runner, holder = make_runner(proc)
+    src = b"Proceso P\nEscribir 55\nFinProceso\n"
+    run_sandboxed.run_sandboxed(
+        src,
+        seccomp_profile=seccomp_profile_path,
+        runner=runner,
+    )
+    _cmd, kwargs = holder["calls"][0]
+    assert kwargs["input"] == src
+    # No sentinel in the payload — the entrypoint treats the whole stdin
+    # as the source (legacy behaviour, no /tmp/input.txt).
+    assert run_sandboxed.INPUT_SENTINEL not in kwargs["input"]
+
+
+def test_run_sandboxed_input_provided_appends_sentinel(
+    seccomp_profile_path: Path,
+) -> None:
+    """When input=b"...", the wrapper appends SENTINEL + input to stdin."""
+    proc = _FakeProc(
+        stdout=b"5\n" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0
+    )
+    runner, holder = make_runner(proc)
+    src = b"Proceso P\nEscribir 5\nFinProceso\n"
+    run_sandboxed.run_sandboxed(
+        src,
+        input=b"5\n",
+        seccomp_profile=seccomp_profile_path,
+        runner=runner,
+    )
+    _cmd, kwargs = holder["calls"][0]
+    expected = src + run_sandboxed.INPUT_SENTINEL + b"5\n"
+    assert kwargs["input"] == expected
+    # The sentinel sits exactly at len(src) bytes from the start.
+    assert kwargs["input"].find(run_sandboxed.INPUT_SENTINEL) == len(src)
+
+
+def test_run_sandboxed_input_provided_no_bind_mount(
+    seccomp_profile_path: Path,
+) -> None:
+    """No -v flag is added to argv when input is set (sentinel-only plumbing).
+
+    Sentinel-only avoids the docker-daemon host-path-resolution pitfall
+    for tmpfiles created inside the worker container (the daemon cannot
+    see them on the host filesystem).
+    """
+    proc = _FakeProc(
+        stdout=b"5\n" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0
+    )
+    runner, holder = make_runner(proc)
+    run_sandboxed.run_sandboxed(
+        b"src",
+        input=b"5\n",
+        seccomp_profile=seccomp_profile_path,
+        runner=runner,
+    )
+    cmd, _ = holder["calls"][0]
+    assert "-v" not in cmd
+    assert "/tmp/input.txt" not in cmd
+    assert cmd[-1] == run_sandboxed.DEFAULT_IMAGE
+
+
+def test_run_sandboxed_input_empty_bytes_still_appends_sentinel(
+    seccomp_profile_path: Path,
+) -> None:
+    """input=b"" still triggers the sentinel — distinguishes from input=None."""
+    proc = _FakeProc(
+        stdout=b"" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0
+    )
+    runner, holder = make_runner(proc)
+    src = b"src"
+    run_sandboxed.run_sandboxed(
+        src,
+        input=b"",
+        seccomp_profile=seccomp_profile_path,
+        runner=runner,
+    )
+    _cmd, kwargs = holder["calls"][0]
+    # src + sentinel + empty input == src + sentinel
+    assert kwargs["input"] == src + run_sandboxed.INPUT_SENTINEL
+
+
+def test_run_sandboxed_input_sentinel_split_in_entrypoint(
+    seccomp_profile_path: Path,
+) -> None:
+    """Verify the entrypoint's INPUT_SENTINEL constant equals the wrapper's.
+
+    Catches drift: if the wrapper and entrypoint ever use different
+    sentinel literals, the inner container would silently run the
+    WRONG program (the input bytes would be parsed as part of the
+    source).  We check via AST extraction rather than raw-text grep
+    so quote-style changes (b'...' vs b"...") don't false-fail.
+    """
+    import ast
+    src_text = (REPO_ROOT / "infra" / "entrypoint.py").read_text()
+    tree = ast.parse(src_text)
+    entrypoint_sentinel = None
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "INPUT_SENTINEL"
+        ):
+            entrypoint_sentinel = ast.literal_eval(node.value)
+            break
+    assert entrypoint_sentinel is not None, (
+        "entrypoint must define INPUT_SENTINEL"
+    )
+    assert entrypoint_sentinel == run_sandboxed.INPUT_SENTINEL
+
+
+def test_run_sandboxed_records_wall_ms(seccomp_profile_path: Path) -> None:
+    """The wrapper records wall_ms around the docker call."""
+    import time as _time
+
+    proc = _FakeProc(
+        stdout=b"" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0
+    )
+    runner, _ = make_runner(proc)
+    start = _time.monotonic()
+    result = run_sandboxed.run_sandboxed(
+        b"x", seccomp_profile=seccomp_profile_path, runner=runner
+    )
+    elapsed = int((_time.monotonic() - start) * 1000)
+    assert result.wall_ms >= 0
+    assert result.wall_ms <= elapsed
+
+
+def test_run_sandboxed_wall_timeout_returns_err_step_limit(
+    seccomp_profile_path: Path,
+) -> None:
+    """When subprocess.run times out, the wrapper reports ERR_STEP_LIMIT.
+
+    This is the M9 wall-clock bound — an infinite loop's docker run never
+    finishes naturally (no SIGTERM), so the wrapper enforces the deadline
+    itself via subprocess.run(timeout=…).  The verdict maps to TLE in the
+    worker.
+    """
+    import subprocess as _subprocess
+
+    def fake_runner(cmd, **kwargs):
+        # Mimic subprocess.TimeoutExpired: stdout partial, exit code -1
+        raise _subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs["timeout"])
+
+    result = run_sandboxed.run_sandboxed(
+        b"x",
+        seccomp_profile=seccomp_profile_path,
+        wall_timeout_s=0.5,
+        runner=fake_runner,
+    )
+    assert result.container_exit_code == -1
+    # The report's error.code drives the worker's TLE classification.
+    assert result.report is not None
+    assert result.report.get("error") is not None
+    assert result.report["error"]["code"] == "ERR_STEP_LIMIT"
+    # wall_ms is recorded as a non-negative int (mock-time may give 0).
+    assert result.wall_ms >= 0
+
+
+def test_run_sandboxed_wall_timeout_passes_to_runner(
+    seccomp_profile_path: Path,
+) -> None:
+    """The wall_timeout_s is forwarded to runner(cmd, ..., timeout=…)."""
+    captured: dict[str, Any] = {}
+
+    def fake_runner(cmd, **kwargs):
+        captured.update(kwargs)
+        proc = _FakeProc(
+            stdout=b"" + run_sandboxed.REPORT_SENTINEL + b"{}",
+            returncode=0,
+        )
+        return proc
+
+    run_sandboxed.run_sandboxed(
+        b"x",
+        seccomp_profile=seccomp_profile_path,
+        wall_timeout_s=3.5,
+        runner=fake_runner,
+    )
+    assert captured.get("timeout") == 3.5
+
+
+def test_sandbox_result_to_dict_includes_wall_ms() -> None:
+    """The wall_ms field round-trips through to_dict()."""
+    sb = run_sandboxed.SandboxResult(
+        container_exit_code=0, output="x", wall_ms=42,
+    )
+    d = sb.to_dict()
+    assert d["wall_ms"] == 42
+
+
+# ---------------------------------------------------------------------------
 # Engine CLI integration: golden SUM round-trips through the parser
 # ---------------------------------------------------------------------------
 
@@ -612,3 +823,187 @@ def test_golden_sum_parses_under_real_engine_cli() -> None:
         assert payload["errors"] == []
     finally:
         src_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Bug #2 fix: max_steps → PIPELINE_MAX_STEPS env → engine CLI --max-steps
+# ---------------------------------------------------------------------------
+
+
+def test_build_docker_run_max_steps_none_omits_env_flag(
+    seccomp_profile_path: Path,
+) -> None:
+    """When ``max_steps`` is None, no ``-e PIPELINE_MAX_STEPS`` reaches docker.
+
+    Legacy behaviour (unlimited steps) is preserved when the caller does
+    not opt in.  This is the default for any code path that hasn't been
+    updated to compute a per-case budget.
+    """
+    cmd = run_sandboxed.build_docker_run(seccomp_profile=seccomp_profile_path)
+    assert not any(
+        arg.startswith(f"{run_sandboxed.PIPELINE_MAX_STEPS_ENV}=")
+        for arg in cmd
+    )
+    assert "-e" not in cmd or not any(
+        arg.startswith(run_sandboxed.PIPELINE_MAX_STEPS_ENV)
+        for arg in cmd
+    )
+
+
+def test_build_docker_run_max_steps_passed_via_env(
+    seccomp_profile_path: Path,
+) -> None:
+    """``max_steps=1140`` appends ``-e PIPELINE_MAX_STEPS=1140`` to docker argv.
+
+    The flag order matches the rest of the hardening contract: -e goes
+    right before the image (the conventional ordering for ``docker run``).
+    """
+    cmd = run_sandboxed.build_docker_run(
+        max_steps=1140, seccomp_profile=seccomp_profile_path,
+    )
+    # The env flag is present in the argv (split into -e + KEY=VAL).
+    i = cmd.index("-e")
+    assert cmd[i + 1] == "PIPELINE_MAX_STEPS=1140"
+    # The flag comes right before the image (positional last).
+    assert cmd[-2] == "PIPELINE_MAX_STEPS=1140"
+    assert cmd[-1] == run_sandboxed.DEFAULT_IMAGE
+
+
+def test_run_sandboxed_max_steps_none_no_env_in_call(
+    seccomp_profile_path: Path,
+) -> None:
+    """``run_sandboxed(max_steps=None)`` does NOT pass ``-e`` to docker."""
+    proc = _FakeProc(
+        stdout=b"" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0,
+    )
+    runner, holder = make_runner(proc)
+    run_sandboxed.run_sandboxed(
+        b"x", seccomp_profile=seccomp_profile_path, runner=runner,
+    )
+    cmd, _ = holder["calls"][0]
+    assert not any(
+        "PIPELINE_MAX_STEPS" in str(arg) for arg in cmd
+    )
+
+
+def test_run_sandboxed_max_steps_int_passes_env(
+    seccomp_profile_path: Path,
+) -> None:
+    """``run_sandboxed(max_steps=50)`` propagates the env flag to docker."""
+    proc = _FakeProc(
+        stdout=b"" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0,
+    )
+    runner, holder = make_runner(proc)
+    run_sandboxed.run_sandboxed(
+        b"x",
+        max_steps=50,
+        seccomp_profile=seccomp_profile_path,
+        runner=runner,
+    )
+    cmd, _ = holder["calls"][0]
+    i = cmd.index("-e")
+    assert cmd[i + 1] == "PIPELINE_MAX_STEPS=50"
+
+
+def test_run_sandboxed_max_steps_combined_with_input(
+    seccomp_profile_path: Path,
+) -> None:
+    """max_steps + per-case input: both propagations work in one call."""
+    proc = _FakeProc(
+        stdout=b"" + run_sandboxed.REPORT_SENTINEL + b"{}", returncode=0,
+    )
+    runner, holder = make_runner(proc)
+    run_sandboxed.run_sandboxed(
+        b"src",
+        input=b"5\n",
+        max_steps=1140,
+        seccomp_profile=seccomp_profile_path,
+        runner=runner,
+    )
+    cmd, kwargs = holder["calls"][0]
+    # Step budget plumbing.
+    i = cmd.index("-e")
+    assert cmd[i + 1] == "PIPELINE_MAX_STEPS=1140"
+    # Per-case input plumbing (todo bug #1): sentinel-split stdin.
+    assert kwargs["input"] == b"src" + run_sandboxed.INPUT_SENTINEL + b"5\n"
+
+
+def test_run_sandboxed_signature_accepts_max_steps_kwarg() -> None:
+    """``run_sandboxed`` exposes ``max_steps`` as a keyword parameter."""
+    import inspect
+
+    sig = inspect.signature(run_sandboxed.run_sandboxed)
+    assert "max_steps" in sig.parameters
+    assert sig.parameters["max_steps"].default is None
+
+
+def test_cli_default_mode_forwards_max_steps_flag(
+    seccomp_profile_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """``--max-steps N`` on the wrapper CLI flows through to ``run_sandboxed``."""
+    captured_kwargs: dict = {}
+
+    def fake_run_sandboxed(source: bytes, **kwargs: Any) -> run_sandboxed.SandboxResult:
+        captured_kwargs.update(kwargs)
+        return run_sandboxed.SandboxResult(
+            container_exit_code=0, output="", report={},
+        )
+
+    monkeypatch.setattr(run_sandboxed, "run_sandboxed", fake_run_sandboxed)
+
+    class _FakeStdin:
+        @property
+        def buffer(self) -> io.BytesIO:
+            return io.BytesIO(b"Proceso P\nFinProceso\n")
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_sandboxed",
+            "--seccomp-profile",
+            str(seccomp_profile_path),
+            "--max-steps",
+            "777",
+        ],
+    )
+    rc = run_sandboxed.main()
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert captured_kwargs.get("max_steps") == 777
+    # And the JSON output shape is unchanged.
+    payload = json.loads(out)
+    assert payload["output"] == ""
+
+
+def test_cli_default_mode_max_steps_default_none(
+    seccomp_profile_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No ``--max-steps`` CLI flag → wrapper's default (None) reaches docker."""
+    captured_kwargs: dict = {}
+
+    def fake_run_sandboxed(source: bytes, **kwargs: Any) -> run_sandboxed.SandboxResult:
+        captured_kwargs.update(kwargs)
+        return run_sandboxed.SandboxResult(
+            container_exit_code=0, output="", report={},
+        )
+
+    monkeypatch.setattr(run_sandboxed, "run_sandboxed", fake_run_sandboxed)
+
+    class _FakeStdin:
+        @property
+        def buffer(self) -> io.BytesIO:
+            return io.BytesIO(b"Proceso P\nFinProceso\n")
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_sandboxed", "--seccomp-profile", str(seccomp_profile_path)],
+    )
+    run_sandboxed.main()
+    assert captured_kwargs.get("max_steps") is None

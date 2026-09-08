@@ -116,6 +116,9 @@ class Problem(Base):
         nullable=False,
         default="exact",
     )
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     author_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"), nullable=False
     )
@@ -245,8 +248,8 @@ class Run(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"), nullable=False
     )
-    problem_id: Mapped[int] = mapped_column(
-        ForeignKey("problems.id"), nullable=False
+    problem_id: Mapped[int | None] = mapped_column(
+        ForeignKey("problems.id"), nullable=True
     )
     kind: Mapped[str] = mapped_column(
         Enum(*RUN_KIND_VALUES, name="run_kind"),

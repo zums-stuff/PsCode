@@ -28,9 +28,17 @@ export interface RunEvent {
   }[];
 }
 
+// ``VITE_WS_URL`` is baked into the static bundle at build time.  Default
+// is empty → browser uses ``wss://`` or ``ws://`` against the current
+// origin (Caddy proxies the ``/ws/`` path to the api container).  LOCAL
+// mode (no TLS) uses ``ws://``; a production deployment with HTTPS uses
+// ``VITE_WS_URL=wss://api.example.com`` at build time.
+const RAW_WS_URL: string = (import.meta.env.VITE_WS_URL as string | undefined) ?? "";
 const BASE_WS: string =
-  (import.meta.env.VITE_WS_URL as string | undefined) ??
-  "ws://localhost:8000";
+  RAW_WS_URL ||
+  (typeof window !== "undefined"
+    ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
+    : "ws://localhost");
 
 const MAX_BACKOFF_MS = 15_000;
 const BASE_BACKOFF_MS = 500;

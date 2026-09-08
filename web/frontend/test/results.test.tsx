@@ -57,6 +57,8 @@ const detailPublic = (): RunDetailResponse => ({
       input: "1 2",
       expected_output: "3",
       diff_line: null,
+      is_sample: true,
+      is_public: true,
     },
   ],
 });
@@ -74,6 +76,8 @@ const detailHidden = (): RunDetailResponse => ({
       input: "x".repeat(80) + "...",
       expected_output: null,
       diff_line: 2,
+      is_sample: false,
+      is_public: false,
     },
   ],
 });
@@ -236,8 +240,8 @@ describe("/submissions — paginated runs history", () => {
   });
 });
 
-describe("RunDetailModal", () => {
-  it("opens from a row click and shows the per-case verdict table", async () => {
+describe("Codeforces-style inline expansion", () => {
+  it("expands from a row click and shows the per-case verdict table", async () => {
     mockFetch({
       "GET /api/runs?page=1&size=20": {
         items: [problemRun({ id: 7 })],
@@ -251,15 +255,14 @@ describe("RunDetailModal", () => {
     renderAt("/submissions", <Submissions />);
     await screen.findByText("#1");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ver" }));
+    fireEvent.click(screen.getByText("#1").closest("tr") as HTMLElement);
 
-    expect(await screen.findByText("Detalle del envío")).toBeInTheDocument();
     expect(await screen.findByText("1 2")).toBeInTheDocument();
     // output "3" and expected "3" both render in the per-case table
     expect(screen.getAllByText("3").length).toBeGreaterThan(0);
   });
 
-  it("renders 'Oculto' for hidden cases (MUST NOT show expected_output)", async () => {
+  it("renders '(oculto)' for hidden cases (MUST NOT show expected_output)", async () => {
     mockFetch({
       "GET /api/runs?page=1&size=20": {
         items: [problemRun({ id: 8, summary_verdict: "WA", steps: 5 })],
@@ -273,9 +276,9 @@ describe("RunDetailModal", () => {
     renderAt("/submissions", <Submissions />);
     await screen.findByText("#1");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ver" }));
+    fireEvent.click(screen.getByText("#1").closest("tr") as HTMLElement);
 
-    expect(await screen.findByText("Oculto")).toBeInTheDocument();
+    expect(await screen.findByText("(oculto)")).toBeInTheDocument();
     // the masked input renders (first 80 chars + "...")
     expect(screen.getByText("x".repeat(80) + "...")).toBeInTheDocument();
   });
@@ -294,7 +297,7 @@ describe("RunDetailModal", () => {
     renderAt("/submissions", <Submissions />);
     await screen.findByText("#1");
 
-    fireEvent.click(screen.getByRole("button", { name: "Ver" }));
+    fireEvent.click(screen.getByText("#1").closest("tr") as HTMLElement);
 
     expect(await screen.findByText(/Línea que difiere:\s*2/)).toBeInTheDocument();
   });
@@ -377,7 +380,7 @@ describe("Retry button (infra-failed only)", () => {
     expect(retries).toHaveLength(1);
   });
 
-  it("clicking Retry on a failed run POSTs /api/runs with the same problem context", async () => {
+  it("clicking Retry on a failed run POSTs /api/runs with the same problem context and source", async () => {
     const runSpy = vi.fn(() => ({ run_id: 99 }));
     mockFetch({
       "GET /api/runs?page=1&size=20": {
@@ -396,6 +399,10 @@ describe("Retry button (infra-failed only)", () => {
         size: 20,
         total: 1,
       },
+      "GET /api/runs/5/detail": {
+        run: { ...problemRun({ id: 5, status: "failed" }), source: "Proceso main\nFinProceso" },
+        test_cases: [],
+      },
       "POST /api/runs": runSpy,
     });
 
@@ -412,6 +419,7 @@ describe("Retry button (infra-failed only)", () => {
     expect(body.problem_id).toBe(11);
     expect(body.mode).toBe("assignment");
     expect(body.assignment_id).toBe(33);
+    expect(body.source).toBe("Proceso main\nFinProceso");
   });
 });
 

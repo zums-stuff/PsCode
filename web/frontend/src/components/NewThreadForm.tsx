@@ -7,6 +7,8 @@ interface NewThreadFormProps {
   problemId: number;
   onCreated: (thread: ForumThread) => void;
   onCancel: () => void;
+  /** Optional notification for failed POSTs (e.g. surfacing the 403 toast). */
+  onError?: (err: unknown) => void;
 }
 
 /**
@@ -19,6 +21,7 @@ export default function NewThreadForm({
   problemId,
   onCreated,
   onCancel,
+  onError,
 }: NewThreadFormProps) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -39,6 +42,7 @@ export default function NewThreadForm({
       } else {
         setError(t("forum.thread.createError"));
       }
+      onError?.(err);
     } finally {
       setSubmitting(false);
     }

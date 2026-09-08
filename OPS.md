@@ -29,7 +29,10 @@ python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))" >> 
 $EDITOR infra/.env
 
 # 3. build images (engine sandbox image first; the worker spawns it per submission)
-docker build -f infra/Dockerfile.worker -t pseint-judge-worker:latest .
+# The engine sandbox (Dockerfile.worker) is tagged pseint-judge-engine:latest so it
+# does NOT collide with the rqworker pool image (Dockerfile.rqworker, tagged
+# pseint-judge-worker:latest by compose).
+docker build -f infra/Dockerfile.worker -t pseint-judge-engine:latest .
 docker build -f web/api/Dockerfile -t pseint-judge-api:latest .
 docker build -f web/frontend/Dockerfile -t pseint-judge-frontend:latest .
 
@@ -60,7 +63,7 @@ After step 7 the platform is live. Visit `http://localhost` (LOCAL) or
 # worker spawns it per submission.  If you skip this step, the worker
 # spawns a stale engine image and `pseint-engine` invocations hit old code.
 git pull
-docker build -f infra/Dockerfile.worker -t pseint-judge-worker:latest .
+docker build -f infra/Dockerfile.worker -t pseint-judge-engine:latest .
 docker build -f web/api/Dockerfile -t pseint-judge-api:latest .
 docker build -f web/frontend/Dockerfile -t pseint-judge-frontend:latest .
 

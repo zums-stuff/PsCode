@@ -1,30 +1,86 @@
 /* Minimal hand-rolled styles — no UI framework (plan todo 22). */
 
-:root {
+/* === Theme tokens ===
+ * Light is the default; dark mode kicks in when:
+ *   - the OS reports prefers-color-scheme: dark AND the user has NOT set
+ *     a manual preference ("system"), OR
+ *   - the user has explicitly chosen the dark theme.
+ * Persistence uses the data-theme attribute on <html> (set by the
+ * ThemeProvider in lib/theme.tsx) — wins over the OS preference.
+ */
+:root,
+:root[data-theme="light"] {
   --bg: #f5f6f8;
+  --bg-elevated: #ffffff;
   --surface: #ffffff;
+  --surface-2: #f9fafb;
   --border: #d8dce2;
+  --border-strong: #9ca3af;
   --text: #1f2430;
+  --text-strong: #0b0d12;
   --muted: #6b7280;
   --accent: #2563eb;
+  --accent-soft: #dbeafe;
   --danger: #b91c1c;
+  --danger-soft: #fee2e2;
   --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.35);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0d12;
+  --bg-elevated: #11141b;
+  --surface: #161922;
+  --surface-2: #1c2030;
+  --border: #2a2f3e;
+  --border-strong: #4a5066;
+  --text: #e6e8ee;
+  --text-strong: #ffffff;
+  --muted: #8a8fa3;
+  --accent: #60a5fa;
+  --accent-soft: #1e3a5f;
+  --danger: #f87171;
+  --danger-soft: #4a1c1c;
+  --ok: #4ade80;
+  --ok-soft: #1a3d2a;
+  --warn: #fbbf24;
+  --warn-soft: #4a3a1a;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.6),
+    0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  --focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.45);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
+  /* Smooth transition when theme toggles */
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 a {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* Visible focus ring for keyboard users (WCAG 2.4.7) */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
 }
 
 /* --- layout --- */
@@ -44,6 +100,10 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
+.admin-header-spacer {
+  flex: 1;
+}
+
 .admin-brand {
   font-weight: 700;
 }
@@ -59,7 +119,109 @@ a {
   font-size: 0.9rem;
 }
 
+/* === Theme toggle (UX P0 — dark mode) === */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0 0.65rem;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.theme-toggle-btn:hover {
+  color: var(--text);
+}
+.theme-toggle-btn[aria-checked="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.theme-toggle-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.theme-toggle-label {
+  font-weight: 500;
+}
+.theme-toggle-compact .theme-toggle-btn {
+  padding: 0 0.5rem;
+}
+
 .admin-content {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* --- student app shell (bug #2: nav stuck on the left) --- */
+
+.student-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.student-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.student-brand {
+  font-weight: 700;
+}
+
+.student-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.student-nav-link {
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+.student-nav-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+.student-nav-link-active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.student-user {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.student-content {
   flex: 1;
   padding: 1.5rem;
   max-width: 1100px;
@@ -352,6 +514,22 @@ th {
   border-radius: 6px;
 }
 
+.admin-clickable-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.admin-clickable-row:hover {
+  background-color: var(--surface-hover, rgba(0, 0, 0, 0.04));
+}
+.admin-clickable-row a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+.admin-clickable-row a:hover {
+  text-decoration: underline;
+}
+
 .admin-nav-link-active {
   background: var(--surface);
   outline: 2px solid var(--accent);
@@ -493,4 +671,1209 @@ th {
 .cm-anticheat-diff {
   background: #fef08a;
   border-radius: 2px;
+}
+
+/* --- markdown preview (KaTeX + code blocks) — bug 3 fix --- */
+
+/*
+ * KaTeX emits a MathML copy + a styled HTML copy and hides the styled copy
+ * by default with display:none !important when the browser renders MathML.
+ * The shipped katex.min.css declares both copies; we import it once in
+ * main.tsx so this section only contains overrides (size, layout, color).
+ */
+.markdown-preview .katex {
+  font-size: 1em;
+  color: inherit;
+}
+
+.markdown-preview .katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.markdown-preview code {
+  background: #f1f3f5;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.92em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.markdown-preview pre {
+  background: #fbfbfc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+}
+
+.markdown-preview pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.markdown-preview blockquote {
+  border-left: 3px solid var(--border);
+  margin: 0.5rem 0;
+  padding: 0.1rem 0.75rem;
+  color: var(--muted);
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  margin: 0.4rem 0 0.4rem 1.5rem;
+  padding: 0;
+}
+
+.markdown-preview table {
+  margin: 0.5rem 0;
+  border-collapse: collapse;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+  margin-top: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.markdown-preview h1 {
+  font-size: 1.35rem;
+}
+
+.markdown-preview h2 {
+  font-size: 1.15rem;
+}
+
+.markdown-preview h3 {
+  font-size: 1rem;
+}
+
+.markdown-preview p {
+  margin: 0.45rem 0;
+}
+
+/* --- forums (todo 33 + forums tab) --- */
+
+.forum-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.forum-page > h1 {
+  margin: 0;
+}
+
+.forum-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.forum-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forum-thread-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forum-thread-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.forum-thread-row button {
+  text-align: left;
+  width: 100%;
+}
+
+.forum-thread-row.selected button {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.forum-pinned-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #fef9c3;
+  color: #a16207;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+
+.forum-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.forum-pagination span {
+  color: var(--muted);
+}
+
+.forum-empty {
+  color: var(--muted);
+}
+
+.forum-new-thread {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.forum-new-thread h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.forum-thread-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.forum-thread-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.forum-posts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.forum-post {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forum-replies {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forum-reply {
+  background: #f8fafc;
+}
+
+.forum-post-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.forum-post-body > p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.forum-post-body small {
+  color: var(--muted);
+}
+
+.forum-post-moderate {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.forum-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forum-code-block {
+  background: #fbfbfc;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  margin: 0.25rem 0;
+}
+
+.forum-code-block code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+}
+
+/* --- nested reply tree (thread detail) --- */
+
+.post-node {
+  padding: 0.5rem 0;
+}
+
+.post-node[data-depth="1"] {
+  margin-left: 1.5rem;
+  border-left: 2px solid var(--accent);
+  padding-left: 0.75rem;
+}
+
+.post-node[data-depth="2"] {
+  margin-left: 1.5rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  padding-left: 0.75rem;
+}
+
+.post-node[data-depth="3"] {
+  margin-left: 1.5rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-left: 0.75rem;
+}
+
+.post-node[data-depth="4"] {
+  margin-left: 1.5rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  padding-left: 0.75rem;
+}
+
+.post-node[data-depth="5"] {
+  margin-left: 1.5rem;
+  border-left: 1px dashed var(--accent);
+  padding-left: 0.75rem;
+}
+
+.post-children {
+  margin-top: 0.5rem;
+}
+
+.show-more {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.show-more:hover {
+  text-decoration: underline;
+}
+
+/* --- forums index (forums tab landing page) --- */
+
+.forum-index {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.forum-index-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.forum-index-header h1 {
+  margin: 0;
+}
+
+.forum-index-header .hint {
+  margin: 0;
+}
+
+.forum-index-actions {
+  margin-top: 0.5rem;
+}
+
+.forum-index-empty {
+  color: var(--muted);
+}
+
+.forum-index-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forum-index-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+}
+
+.forum-index-row-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--text);
+}
+
+.forum-index-row-main:hover .forum-index-row-title {
+  color: var(--accent);
+}
+
+.forum-index-row-title {
+  font-weight: 600;
+}
+
+.forum-index-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  align-items: center;
+}
+
+.forum-index-replies {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.forum-index-replies.has-replies {
+  background: #dbeafe;
+  color: var(--accent);
+}
+
+.forum-index-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.forum-index-pagination span {
+  color: var(--muted);
+}
+
+.forum-index-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 60;
+  padding: 2rem 1rem;
+  overflow-y: auto;
+}
+
+.forum-index-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  width: min(520px, 96vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.forum-index-modal h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* --- contests index (plan todo 34) --- */
+
+.contests-index {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.contests-index-header h1 {
+  margin: 0 0 0.25rem 0;
+}
+
+.contests-index-subtitle {
+  color: var(--muted);
+  margin: 0 0 1.5rem 0;
+}
+
+.contests-index-loading {
+  color: var(--muted);
+}
+
+.contests-index-section {
+  margin-bottom: 1.75rem;
+}
+
+.contests-index-section-title {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.1rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0.35rem;
+}
+
+.contests-index-empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0.75rem 0;
+}
+
+.contests-index-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contests-index-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  gap: 1rem;
+}
+
+.contests-index-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.08);
+}
+
+.contests-index-card--upcoming {
+  border-left: 3px solid #9ca3af;
+}
+
+.contests-index-card--running {
+  border-left: 3px solid var(--ok);
+}
+
+.contests-index-card--ended {
+  border-left: 3px solid var(--danger);
+  opacity: 0.85;
+}
+
+.contests-index-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.contests-index-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.contests-index-card-title {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.contests-index-card-title:hover {
+  text-decoration: underline;
+}
+
+.contests-index-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.contests-index-card-mode,
+.contests-index-card-teams {
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: #eef1f5;
+  color: var(--text);
+}
+
+.contests-index-card-countdown {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.contests-index-card-countdown-label {
+  font-weight: 600;
+}
+
+.contests-index-card-ended {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.contests-index-card-actions {
+  flex-shrink: 0;
+}
+
+.contests-index-registered-badge {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: #dcfce7;
+  color: var(--ok);
+}
+
+/* --- contest detail polish (plan todo 34) --- */
+
+.contest-page {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.contest-header {
+  margin-bottom: 1.25rem;
+}
+
+.contest-header h1 {
+  margin: 0 0 0.35rem 0;
+}
+
+.contest-countdown-row {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.contest-hero {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+}
+
+.contest-hero--upcoming {
+  background: #f3f4f6;
+}
+
+.contest-hero--running {
+  background: #dcfce7;
+}
+
+.contest-hero--running .contest-hero-countdown {
+  animation: contest-pulse 2s ease-in-out infinite;
+}
+
+@keyframes contest-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+.contest-hero--ended {
+  background: #fee2e2;
+}
+
+.contest-hero h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.15rem;
+}
+
+.contest-hero-countdown {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.contest-register {
+  margin-bottom: 1rem;
+}
+
+.contest-problems {
+  margin-bottom: 1.25rem;
+}
+
+.contest-problem-list {
+  list-style: none;
+  margin: 0.5rem 0 0 0;
+  padding: 0;
+}
+
+.contest-problem-list li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.contest-scoreboard {
+  margin-bottom: 1.25rem;
+}
+
+.contest-scoreboard h2 {
+  margin: 0 0 0.5rem 0;
+}
+
+.contest-teams {
+  margin-bottom: 1.25rem;
+}
+
+.contest-teams h2 {
+  margin: 0 0 0.5rem 0;
+}
+
+.contest-teams ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.contest-teams li {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* --- responsive --- */
+
+@media (max-width: 600px) {
+  .contests-index-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .contests-index-card-actions {
+    margin-top: 0.5rem;
+  }
+
+  .contest-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .student-content {
+    padding: 1rem;
+  }
+}
+
+/* --- practice sandbox tab (plan todo 30) --- */
+
+.practice-select {
+  max-width: 28rem;
+  margin-bottom: 1rem;
+}
+
+.practice-problem-picker {
+  margin-bottom: 1rem;
+}
+
+.practice-problem-picker summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.practice-standalone-hint {
+  margin-bottom: 1rem;
+}
+
+.practice-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.practice-statement,
+.practice-editor,
+.practice-history {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.practice-statement h2,
+.practice-editor h2,
+.practice-history h2 {
+  margin-top: 0;
+}
+
+.practice-editor .cm-editor {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 16rem;
+}
+
+.practice-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.practice-history {
+  grid-column: 1 / -1;
+}
+
+.practice-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.practice-history-list li {
+  margin-bottom: 0.4rem;
+}
+
+.practice-history-list button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.practice-history-list button:hover,
+.practice-history-active {
+  border-color: var(--accent);
+}
+
+.practice-run-id {
+  font-weight: 600;
+}
+
+.practice-run-steps {
+  margin-left: auto;
+}
+
+@media (max-width: 720px) {
+  .practice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .practice-history {
+    grid-column: auto;
+  }
+}
+
+/* --- Codeforces-style submissions expansion --- */
+
+.run-row:hover {
+  background: var(--surface);
+}
+
+.run-expanded td {
+  border-top: none;
+  background: var(--bg);
+}
+
+.run-expanded-content {
+  padding: 0.75rem 1rem;
+}
+
+.run-expanded-content section {
+  margin-top: 0.75rem;
+}
+
+.run-expanded-content h4 {
+  margin: 0 0 0.4rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+.test-case-list {
+  margin-bottom: 0.5rem;
+}
+
+.test-case-list .data-table {
+  font-size: 0.9rem;
+}
+
+/* --- submissions action buttons (Bug A) --- */
+
+.run-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.run-actions .link-button {
+  white-space: nowrap;
+}
+
+/* --- Codeforces-style scoreboard (Bug B) --- */
+
+.cf-scoreboard {
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  table-layout: fixed;
+  text-align: center;
+}
+
+.cf-scoreboard th,
+.cf-scoreboard td {
+  padding: 0.35rem 0.3rem;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.cf-scoreboard thead th {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.cf-scoreboard .cf-rank {
+  width: 2.2rem;
+  text-align: center;
+}
+
+.cf-scoreboard .cf-who {
+  text-align: left;
+  font-weight: 600;
+  min-width: 8rem;
+}
+
+.cf-scoreboard .cf-penalty {
+  width: 3rem;
+  color: var(--muted);
+}
+
+.cf-scoreboard .cf-letter {
+  width: 3.4rem;
+}
+
+.cf-scoreboard .cf-total {
+  font-weight: 700;
+}
+
+.cf-cell--none {
+  background: #f7f8fa;
+}
+
+.cf-cell--solved {
+  background: #eef7ee;
+  color: var(--ok);
+}
+
+.cf-cell--wrong {
+  background: #fdecec;
+  color: var(--danger);
+}
+
+.cf-cell--points {
+  color: var(--text);
+}
+
+.cf-cell-verdict {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.cf-cell-time {
+  display: block;
+  font-size: 0.72rem;
+  color: inherit;
+}
+
+.cf-scoreboard tfoot td {
+  background: #f3f4f6;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cf-scoreboard .cf-footer-label {
+  text-align: left;
+  color: var(--muted);
+}
+/* --- contest teams mode (teams-fix) --- */
+
+.teams-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.team-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+}
+
+.team-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.team-count {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.team-members {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.team-add-member {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.teams-my {
+  padding: 0.25rem 0;
+}
+
+/* Reusable modal (teams panel + others) — mirrors Solve.css .run-modal. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  width: min(560px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+.modal label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.modal input[type="text"] {
+  width: 100%;
+  padding: 0.45rem;
+  margin-top: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* === Toast viewport (UX P0 — global notifications) === */
+.toast-viewport {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 1000;
+  max-width: 420px;
+  pointer-events: none; /* let clicks pass through empty space */
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  font-size: 0.92rem;
+  animation: toast-in 0.18s ease-out;
+}
+.toast-success { border-left-color: var(--ok); }
+.toast-error   { border-left-color: var(--danger); }
+.toast-warning { border-left-color: var(--warn); }
+.toast-info    { border-left-color: var(--accent); }
+.toast-icon {
+  font-size: 1rem;
+  line-height: 1;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 1.1rem;
+  text-align: center;
+}
+.toast-success .toast-icon { color: var(--ok); }
+.toast-error   .toast-icon { color: var(--danger); }
+.toast-warning .toast-icon { color: var(--warn); }
+.toast-info    .toast-icon { color: var(--accent); }
+.toast-message {
+  flex: 1;
+  color: var(--text);
+}
+.toast-action,
+.toast-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+}
+.toast-action {
+  color: var(--accent);
+  font-weight: 500;
+}
+.toast-action:hover,
+.toast-close:hover {
+  background: var(--surface-2);
+}
+.toast-close { font-size: 1.1rem; line-height: 1; }
+@keyframes toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* === Skeleton loader (UX P0 — replaced plain "Cargando..." text) === */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--border) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+  display: inline-block;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.skeleton-text {
+  height: 0.9em;
+  width: 100%;
+}
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+.skeleton-circle { border-radius: 50%; }
+
+/* === ConfirmDialog (UX P0 — replaces window.confirm) === */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  animation: fade-in 0.12s ease-out;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.confirm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 1.25rem;
+  max-width: 420px;
+  width: calc(100% - 2rem);
+}
+.confirm-title {
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: var(--text-strong);
+}
+.confirm-message {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.confirm-actions button {
+  height: 34px;
+  padding: 0 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.confirm-actions .confirm-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.confirm-actions .confirm-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
 }

@@ -48,6 +48,8 @@ from pseint_api.models import (
     Contest,
     ContestParticipant,
     ContestProblem,
+    ForumPost,
+    ForumThread,
     Problem,
     Run,
     TestCase,
@@ -90,7 +92,7 @@ PROBLEM_SPECS: list[tuple[str, str, str, int | None, str]] = [
     ),
     (
         "Fibonacci",
-        "Lee un entero n (n >= 0) e imprime el n-esimo numero de Fibonacci (F(0)=0, F(1)=1).",
+        "Lee un entero $n \\geq 0$ e imprime el $n$-ésimo número de Fibonacci ($F(0)=0$, $F(1)=1$).",
         "O(n)",
         None,
         "exact",
@@ -331,6 +333,7 @@ def _make_problems(session: Session, author: User) -> dict[str, Problem]:
             expected_complexity=expected,
             step_budget=step_budget,
             compare_mode=compare_mode,
+            is_public=True,
             author_id=author.id,
         )
         session.add(problem)
@@ -455,6 +458,120 @@ def _plant_runs(
     return planted
 
 
+def _lookup_users(session: Session) -> dict[str, User]:
+    """Fetch the demo users by username (used when reseeding existing data)."""
+    usernames = ["student01", "student02", "profe"]
+    rows = session.scalars(
+        select(User).where(User.username.in_(usernames))
+    ).all()
+    return {u.username: u for u in rows}
+
+
+def _lookup_problems(session: Session) -> dict[str, Problem]:
+    """Fetch the demo problems by title (used when reseeding existing data)."""
+    titles = ["HolaMundo", "Suma", "Primo", "Fibonacci"]
+    rows = session.scalars(
+        select(Problem).where(Problem.title.in_(titles))
+    ).all()
+    return {p.title: p for p in rows}
+
+
+def _make_forum(
+    session: Session,
+    problems: dict[str, Problem],
+    users: dict[str, User],
+) -> None:
+    """Seed a demo forum thread with a nested reply chain (todo 33/34).
+
+    Creates the ``Duda sobre HolaMundo`` thread on the HolaMundo problem with
+    an opening post followed by replies whose ``parent_id`` forms a visible
+    chain (post -> reply -> reply).  Idempotent: once the thread's posts form
+    a nested chain it is a no-op, so reseeding never duplicates anything.
+
+    Repair rule: if the thread exists but currently holds only flat
+    (non-nested) posts — e.g. an old seed without parent links — its posts are
+    replaced with the canonical nested chain so the demo always demonstrates
+    nesting.  Posts that already carry a ``parent_id`` are left untouched.
+    """
+    thread = session.scalar(
+        select(ForumThread)
+        .join(Problem, Problem.id == ForumThread.problem_id)
+        .where(
+            Problem.title == "HolaMundo",
+            ForumThread.title == "Duda sobre HolaMundo",
+        )
+    )
+
+    if thread is None:
+        thread = ForumThread(
+            problem_id=problems["HolaMundo"].id,
+            title="Duda sobre HolaMundo",
+            created_by=users["student01"].id,
+        )
+        session.add(thread)
+        session.flush()
+
+    existing = session.scalars(
+        select(ForumPost).where(ForumPost.thread_id == thread.id)
+    ).all()
+    nested = [p for p in existing if p.parent_id is not None]
+    if nested:
+        # A nested chain already exists — nothing to do.
+        return
+
+    # The thread has only flat/placeholder posts (or is empty): replace them
+    # with the canonical nested demo chain.
+    for post in existing:
+        session.delete(post)
+    session.flush()
+
+    now = datetime.now(UTC)
+
+    opening = ForumPost(
+        thread_id=thread.id,
+        author_id=users["student01"].id,
+        body="¿Cómo se imprime algo en pantalla con PseInt sin iniciar un "
+        "proceso de lectura? No entiendo bien la instrucción.",
+        created_at=now - timedelta(days=1, hours=2),
+    )
+    session.add(opening)
+    session.flush()
+
+    teacher_reply = ForumPost(
+        thread_id=thread.id,
+        author_id=users["profe"].id,
+        parent_id=opening.id,
+        body="Usa Escribir Sin Saltar. Recuerda que Escribir añade un salto "
+        "de línea automático al final.",
+        created_at=now - timedelta(days=1),
+    )
+    session.add(teacher_reply)
+    session.flush()
+
+    thanks = ForumPost(
+        thread_id=thread.id,
+        author_id=users["student02"].id,
+        parent_id=teacher_reply.id,
+        body="Gracias, con eso quedó claro. ¿Y si quiero imprimir varias "
+        "variables en la misma línea?",
+        created_at=now - timedelta(hours=20),
+    )
+    session.add(thanks)
+    session.flush()
+
+    # Deeper reply to show a two-level chain under the teacher's answer.
+    follow_up = ForumPost(
+        thread_id=thread.id,
+        author_id=users["profe"].id,
+        parent_id=thanks.id,
+        body="Puedes separarlas con comas dentro del mismo Escribir: "
+        "`Escribir a, b`.",
+        created_at=now - timedelta(hours=18),
+    )
+    session.add(follow_up)
+    session.flush()
+
+
 def seed() -> list[int]:
     """Idempotent seed.  Returns [users, classes, problems, contests] counts
     after the run (whether it actually seeded or was a no-op)."""
@@ -463,6 +580,13 @@ def seed() -> list[int]:
         with Session(engine) as session:
             existing = session.scalar(select(func.count()).select_from(User))
             if existing:
+                # Already seeded: still propagate idempotent additions like
+                # the forum demo thread on top of existing data.
+                forum_users = _lookup_users(session)
+                forum_problems = _lookup_problems(session)
+                if forum_users and forum_problems:
+                    _make_forum(session, forum_problems, forum_users)
+                    session.commit()
                 counts = _table_counts(session)
                 print(
                     f"seed: already seeded (users={counts[0]}); "
@@ -492,6 +616,8 @@ def seed() -> list[int]:
                 contest=contest,
                 students=users,
             )
+
+            _make_forum(session, problems, users)
 
             session.commit()
             return _table_counts(session)

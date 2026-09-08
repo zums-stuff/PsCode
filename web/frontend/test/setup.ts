@@ -77,3 +77,26 @@ if (typeof navigator.clipboard === "undefined") {
     configurable: true,
   });
 }
+
+/**
+ * jsdom does not implement window.matchMedia; ThemeProvider needs it for
+ * prefers-color-scheme detection (UX P0 — dark mode). Return a fake that
+ * reports no preference and accepts no-change subscribers.
+ */
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  // jsdom doesn't ship matchMedia; provide a minimal stub for ThemeProvider.
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {}, // deprecated
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+    }),
+  });
+}

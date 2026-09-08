@@ -45,6 +45,7 @@ export default function AdminProblemDetail() {
   const [expectedComplexity, setExpectedComplexity] = useState("");
   const [stepBudget, setStepBudget] = useState("");
   const [compareMode, setCompareMode] = useState("exact");
+  const [isPublic, setIsPublic] = useState(false);
   const [cases, setCases] = useState<TestCaseDraft[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -73,6 +74,7 @@ export default function AdminProblemDetail() {
     setExpectedComplexity(p.expected_complexity);
     setStepBudget(p.step_budget === null ? "" : String(p.step_budget));
     setCompareMode(p.compare_mode);
+    setIsPublic(p.is_public);
   }, [problemQuery.data]);
 
   // Hydrate the case table once cases load.
@@ -148,6 +150,7 @@ export default function AdminProblemDetail() {
         expected_complexity: expectedComplexity,
         compare_mode: compareMode,
         step_budget: stepBudget === "" ? null : Number(stepBudget),
+        is_public: isPublic,
       };
       let problemId: number;
       if (isNew) {
@@ -242,6 +245,18 @@ export default function AdminProblemDetail() {
             <option value="token">{t("compareMode.token")}</option>
           </select>
         </div>
+      </div>
+
+      <div className="form-field">
+        <label htmlFor="problem-is-public">
+          <input
+            id="problem-is-public"
+            type="checkbox"
+            checked={isPublic}
+            onChange={(e) => setIsPublic(e.target.checked)}
+          />{" "}
+          {t("admin.problem.fields.isPublic")}
+        </label>
       </div>
 
       <h2>{t("admin.problem.fields.cases")}</h2>

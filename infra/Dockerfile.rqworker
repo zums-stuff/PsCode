@@ -50,7 +50,6 @@ RUN pip install --no-cache-dir \
         /app/web/api \
         "rq>=1.16" \
         "redis>=5.0" \
-    && pip cache purge \
     && rm -rf /app/engine /app/judge /app/web/api /root/.cache
 
 # infra.worker.worker is a script package, not an installed one — keep its
@@ -61,8 +60,27 @@ RUN pip install --no-cache-dir \
 RUN useradd --create-home --uid 65534 pseint || true \
     && mkdir -p /home/pseint \
     && chown -R 65534:65534 /home/pseint /app
+
+# Docker CLI for spawning engine sandboxes (todo bug #1 verification path).
+# The image is python:3.11-slim which doesn't ship docker; we download the
+# static CLI binary from docker-static via a small Python helper script
+# (no curl / apt sources needed). The actual engine sandbox is built by
+# infra/Dockerfile.worker and tagged pseint-judge-worker:latest — the
+# wrapper spawns one per submission via `docker run` (todo 34/35 contract).
+ARG DOCKER_CLI_VERSION=28.4.0
+COPY infra/scripts/install-docker-cli.sh /tmp/install-docker-cli.sh
+RUN set -eux; \
+    chmod 0555 /tmp/install-docker-cli.sh; \
+    DOCKER_CLI_VERSION="${DOCKER_CLI_VERSION}" /tmp/install-docker-cli.sh; \
+    rm -f /tmp/install-docker-cli.sh
+
 USER 65534:65534
 
 WORKDIR /home/pseint
+
+# ``RUN_SANDBOXED`` is the absolute path of the sandbox wrapper; the
+# worker imports it via ``importlib.util.spec_from_file_location`` so the
+# exact location doesn't matter (worker.py uses it for subprocess.run).
+ENV RUN_SANDBOXED=/app/scripts/run_sandboxed.py
 
 CMD ["python", "-m", "infra.worker.worker"]

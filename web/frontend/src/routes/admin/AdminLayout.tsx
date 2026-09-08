@@ -3,6 +3,7 @@ import { useQuery, useQueries } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { t } from "../../lib/i18n";
+import ThemeToggle from "../../components/ThemeToggle";
 import type { AnticheatPair, ClassOut } from "../../lib/types";
 
 const ANTICHEAT_THRESHOLD = 0.85;
@@ -50,6 +51,8 @@ export default function AdminLayout() {
     <div className="admin-layout">
       <header className="admin-header">
         <span className="admin-brand">{t("app.title")}</span>
+        <div className="admin-header-spacer" />
+        <ThemeToggle compact />
         <nav aria-label={t("admin.dashboard.nav.active")}>
           <NavLink
             to="/admin/problems"

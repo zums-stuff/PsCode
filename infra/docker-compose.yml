@@ -100,10 +100,12 @@ services:
       REPLICAS: ${REPLICAS:-3}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Path the wrapper uses to spawn engine containers.  The engine image
-      # was built by todo 34 with tag pseint-judge-worker:latest — same name
-      # as this compose service's image; the wrapper overrides the image
-      # via the ``$WORKER_IMAGE`` env (see scripts/run_sandboxed.py).
-      WORKER_IMAGE: ${WORKER_IMAGE:-pseint-judge-worker:latest}
+      # was built by todo 34 with tag pseint-judge-engine:latest (kept
+      # separate from this compose service's own image tag
+      # pseint-judge-worker:latest — the rqworker pool — to avoid the two
+      # Dockerfiles overwriting each other under a shared tag).  The
+      # wrapper reads this env at startup (see scripts/run_sandboxed.py).
+      WORKER_IMAGE: ${WORKER_IMAGE:-pseint-judge-engine:latest}
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,6 +127,13 @@ services:
       - ../engine/src:/app/engine/src:ro
       - ../judge/src:/app/judge/src:ro
       - ../web/api/src:/app/web/api/src:ro
+    # Add the worker process (UID 65534) to the host's docker group so it
+    # can read/write the socket.  ``DOCKER_GID`` defaults to 957 (Debian/
+    # Ubuntu's docker group) — override via `.env` for hosts where the
+    # docker socket belongs to a different group (stat -c '%g'
+    # /var/run/docker.sock).
+    group_add:
+      - "${DOCKER_GID:-957}"
     healthcheck:
       # Worker health: probe that the RQ pool is running by importing the
       # worker module and asserting worker_count() >= 1.  No external probe
@@ -165,14 +174,14 @@ services:
         condition: service_completed_successfully
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
-      # 443 is only opened when DOMAIN is set (HTTPS mode).  We bind 443
-      # unconditionally here so Caddy can serve the ACME http-01 challenge
-      # even if you later set DOMAIN; when DOMAIN is unset Caddy serves
-      # plain HTTP and ignores the TLS block (it doesn't bind 443 unless
-      # ``{$DOMAIN}`` evaluates to a host with a TLS directive).  In
-      # production (todo 40) Caddy obtains + auto-renews real certs; for
-      # local dev the 443 port is harmless idle.
-      - "${CADDY_HTTPS_PORT:-443}:443"
+      # 443 is conditional — only published when DOMAIN is set (LOCAL mode
+      # skips it).  Caddy's :443 listener always activates TLS regardless
+      # of the Caddyfile config, so leaving it bound without a real cert
+      # would cause browsers to refuse the connection (Firefox: PR_END_OF_
+      # FILE_ERROR; Chrome: ERR_SSL_PROTOCOL_ERROR).  The HTTPS port is
+      # published by setting ``CADDY_HTTPS_PORT=443`` in ``.env`` on the
+      # production host; for local dev this stays unset, so Caddy serves
+      # plain HTTP only on :80.
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Caddy serves the frontend's static dist/ from this volume.
@@ -193,6 +202,12 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    # In LOCAL mode (DOMAIN unset) the 443 publish is omitted, so the
+    # operator MUST uncomment the next line after setting DOMAIN on a real
+    # host.  Caddy will obtain + auto-renew a Let's Encrypt cert via the
+    # ACME http-01 challenge on :80 (which is already published above).
+    # ports:
+    #   - "${CADDY_HTTPS_PORT:-443}:443"
 
 volumes:
   pgdata:

@@ -5,21 +5,28 @@ returns 202 {run_id} — the API never judges; the worker (todo 35) consumes
 the queued run.  Assignment mode enforces the deadline (422
 ASSIGNMENT_CLOSED, teacher rejudge exempt); contest mode requires
 participation; practice mode is never graded.  Source cap 64KB -> 413.
-"""
 
-from __future__ import annotations
+POST /api/runs/{run_id}/rejudge is the teacher/admin re-grading action:
+it re-enqueues a copy of an existing run with the same source so the
+engine re-evaluates it (e.g. after fixing an engine bug, or after the
+seed is updated).  It is exempt from the per-user runs/submission rate
+limits because it is an administrative action, not a student submission.
+"""
 
 import logging
 import os
 from datetime import UTC, datetime
 from typing import Generic, Literal, TypeVar
 
+import redis
+from rq import Queue
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..deps import get_current_user, get_db
+from ..deps import get_current_user, get_db, require_teacher
 from ..models import (
     Assignment,
     Contest,
@@ -51,7 +58,7 @@ class Page(BaseModel, Generic[T]):
 
 
 class RunCreateRequest(BaseModel):
-    problem_id: int
+    problem_id: int | None = None
     source: str
     mode: Literal["practice", "assignment", "contest"]
     assignment_id: int | None = None
@@ -76,7 +83,7 @@ class RunOut(BaseModel):
 
     id: int
     user_id: int
-    problem_id: int
+    problem_id: int | None
     kind: str
     status: str
     summary_verdict: str | None
@@ -88,6 +95,7 @@ class RunOut(BaseModel):
 
 
 class RunDetailOut(RunOut):
+    source: str = ""
     test_results: list[TestResultOut] = []
 
 
@@ -110,26 +118,34 @@ class RunDetailCaseOut(BaseModel):
     input: str | None
     expected_output: str | None
     diff_line: int | None
+    is_sample: bool = False
+    is_public: bool = False
 
 
 class RunDetailResponse(BaseModel):
-    run: RunOut
+    run: RunDetailOut
     test_cases: list[RunDetailCaseOut]
 
 
 def _enqueue_run(run_id: int) -> None:
-    """Best-effort enqueue to Redis; the worker (todo 35) consumes the queue.
+    """Enqueue ``run_id`` directly to RQ's ``runs`` queue.
 
-    If Redis is unreachable (or redis-py missing) the run simply stays
-    ``queued`` in the DB and a warning is logged — tests never require Redis.
+    RQ resolves the job by module path (``infra.worker.jobs.process_run``)
+    so the function can run in a separate worker subprocess; this avoids
+    the ``__main__``-function restriction that the legacy raw-list intake
+    tripped over.  Failures (Redis unreachable, etc.) leave the run in
+    ``queued`` status and emit a warning — the worker pool's health
+    check + the user retrying the submission are the recovery paths.
     """
     try:
-        import redis
+        from rq import Queue
 
         client = redis.Redis.from_url(
             os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         )
-        client.rpush("pseint:runs", str(run_id))
+        queue_name = os.environ.get("RQ_QUEUE_NAME", "runs")
+        q = Queue(queue_name, connection=client)
+        q.enqueue("infra.worker.jobs.process_run", run_id)
     except Exception:
         logger.warning("Redis unavailable; run %s left queued", run_id)
 
@@ -166,8 +182,17 @@ def create_run(
     user: User = Depends(get_current_user),
 ):
     _check_source_size(req.source)
-    if db.get(Problem, req.problem_id) is None:
+
+    # Practice/sandbox mode allows no problem (free-form exploration). For
+    # assignment/contest the problem must exist; the linked-id check below
+    # raises 404 in those cases.
+    if req.problem_id is not None and db.get(Problem, req.problem_id) is None:
         raise HTTPException(status_code=404, detail="Problem not found")
+    if req.problem_id is None and req.mode != "practice":
+        raise HTTPException(
+            status_code=422,
+            detail="problem_id is required for non-practice runs",
+        )
 
     run = Run(
         user_id=user.id,
@@ -217,17 +242,62 @@ def create_run(
     return {"run_id": run.id}
 
 
+@router.post(
+    "/{run_id}/rejudge",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def rejudge_run(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_teacher),
+) -> dict[str, int]:
+    """Re-enqueue ``run_id`` as a fresh run with the same source / stdin.
+
+    Teacher/admin only.  Used after engine fixes, seed updates, or to
+    verify a flaky verdict.  Exempt from the per-user runs/submission
+    rate limits (handled by routing the request through a separate
+    bucket — see ``RateLimitMiddleware``).
+    """
+    original = db.get(Run, run_id)
+    if original is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # Re-enqueue as a brand-new run row that copies the submission inputs.
+    # We deliberately do NOT mutate the existing row — its verdict stays
+    # as-is so the UI can show "rejudge in flight" vs the original verdict.
+    rejudge = Run(
+        user_id=original.user_id,
+        problem_id=original.problem_id,
+        kind=original.kind,
+        status="queued",
+        source=original.source,
+        stdin=original.stdin,
+        assignment_id=original.assignment_id,
+        contest_id=original.contest_id,
+    )
+    db.add(rejudge)
+    db.commit()
+    _enqueue_run(rejudge.id)
+    return {"run_id": rejudge.id, "original_run_id": original.id}
+
+
 @router.get("", response_model=Page[RunOut])
 def list_runs(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     problem_id: int | None = None,
+    contest_id: int | None = None,
+    kind: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     stmt = select(Run).where(Run.user_id == user.id)
     if problem_id is not None:
         stmt = stmt.where(Run.problem_id == problem_id)
+    if contest_id is not None:
+        stmt = stmt.where(Run.contest_id == contest_id)
+    if kind is not None:
+        stmt = stmt.where(Run.kind == kind)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     items = db.scalars(
         stmt.order_by(Run.created_at.desc(), Run.id.desc())
@@ -324,11 +394,13 @@ def get_run_detail(
                 input=input_text,
                 expected_output=expected,
                 diff_line=diff_line,
+                is_sample=tc.is_sample if tc is not None else False,
+                is_public=tc.is_public if tc is not None else False,
             )
         )
 
     return RunDetailResponse(
-        run=RunOut.model_validate(run), test_cases=test_cases
+        run=RunDetailOut.model_validate(run), test_cases=test_cases
     )
 
 

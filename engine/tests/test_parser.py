@@ -139,6 +139,108 @@ def test_definir_with_init():
     assert stmt.init == IntegerLiteral(2, 20, 5)
 
 
+# ---------------------------------------------------------------------------
+# Typed declarations (sugar: ``Cadena s`` is ``Assignment(s, None, Cadena)``)
+# ---------------------------------------------------------------------------
+
+
+def test_typed_decl_cadena_no_init():
+    """``Cadena s`` parses to a typed-decl Assignment with value=None."""
+    stmt = single("Proceso p\nCadena s\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 7, "s")
+    assert stmt.value is None
+    assert stmt.type_name == "Cadena"
+
+
+def test_typed_decl_entero_with_init():
+    stmt = single("Proceso p\nEntero i <- 5\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 7, "i")
+    assert stmt.value == IntegerLiteral(2, 12, 5)
+    assert stmt.type_name == "Entero"
+
+
+def test_typed_decl_real_with_init():
+    stmt = single("Proceso p\nReal x <- 3.14\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 5, "x")
+    assert stmt.value == RealLiteral(2, 10, 3.14)
+    assert stmt.type_name == "Real"
+
+
+def test_typed_decl_logico_with_init():
+    stmt = single("Proceso p\nLogico b <- Verdadero\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 7, "b")
+    assert stmt.value == BooleanLiteral(2, 12, True)
+    assert stmt.type_name == "Logico"
+
+
+def test_typed_decl_caracter_with_init():
+    stmt = single('Proceso p\nCaracter c <- "X"\nFinProceso\n')
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 9, "c")
+    assert stmt.value == StringLiteral(2, 14, '"X"')
+    assert stmt.type_name == "Caracter"
+
+
+def test_typed_decl_eq_arrow_also_accepted():
+    """``Entero i = 5`` is the flexible ``=`` arrow variant."""
+    stmt = single("Proceso p\nEntero i = 5\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 7, "i")
+    assert stmt.value == IntegerLiteral(2, 11, 5)
+    assert stmt.type_name == "Entero"
+
+
+def test_typed_decl_lowercase_type_name():
+    """Type-name keywords are case-insensitive (lexer normalisation)."""
+    stmt = single("Proceso p\ncadena s\nFinProceso\n")
+    assert isinstance(stmt, Assignment)
+    assert stmt.target == Identifier(2, 7, "s")
+    assert stmt.type_name == "cadena"
+
+
+def test_typed_decl_missing_identifier_is_ce():
+    """``Cadena`` alone (no variable name) must be a CE."""
+    with pytest.raises(ParseError) as exc:
+        parse("Proceso p\nCadena\nFinProceso\n")
+    assert exc.value.code == "CE"
+
+
+def test_typed_decl_missing_identifier_after_type_is_ce():
+    """``Entero 5`` (no identifier) must be a CE."""
+    with pytest.raises(ParseError) as exc:
+        parse("Proceso p\nEntero 5\nFinProceso\n")
+    assert exc.value.code == "CE"
+    assert exc.value.line == 2
+
+
+def test_typed_decl_missing_arrow_is_ce():
+    """``Real x 3.14`` (no ``<-`` between name and value) must be a CE.
+
+    After consuming ``Real x``, the parser sees ``3.14`` which starts an
+    expression — but the typed-decl handler only accepts ``<-`` / ``=``
+    after the identifier.  Anything else triggers a CE at that position.
+    """
+    with pytest.raises(ParseError) as exc:
+        parse("Proceso p\nReal x 3.14\nFinProceso\n")
+    assert exc.value.code == "CE"
+
+
+def test_typed_decl_array_form_is_ce():
+    """``Cadena arr[3]`` (typed array) is not in the pinned dialect → CE.
+
+    The parser accepts scalar typed-decls only; for arrays the user must
+    use the canonical ``Dimension`` / ``Definir`` forms.
+    """
+    with pytest.raises(ParseError) as exc:
+        parse("Proceso p\nCadena arr[3]\nFinProceso\n")
+    assert exc.value.code == "CE"
+    assert exc.value.line == 2
+
+
 def test_dimension():
     stmt = single("Proceso p\nDimension arr[10]\nFinProceso\n")
     assert isinstance(stmt, Dimension)

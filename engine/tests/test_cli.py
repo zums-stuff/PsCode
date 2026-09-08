@@ -276,6 +276,55 @@ def test_run_max_steps_alias(tmp_path):
     assert proc.returncode == 3
 
 
+def test_run_max_steps_tle_with_loop_program(tmp_path):
+    """Bug #2 contract: ``--max-steps N`` on a loop program → exit 3 + ERR_STEP_LIMIT.
+
+    The LENTO_SRC program does ``Para i <- 1 Hasta 100000``, ~600000
+    steps (todo 8 corpus confirmed).  A budget of 50 fires ERR_STEP_LIMIT
+    mid-loop; the report should carry the error code and a non-zero
+    step count.
+
+    This test is the engine-CLI half of the bug #2 plumbing contract:
+    the entrypoint threads ``--max-steps N`` into the engine CLI exactly
+    this way (see ``infra/entrypoint.build_cmd``), and the wrapper
+    passes the env var from ``docker run`` to the entrypoint.  If this
+    test passes, the engine CLI behaves correctly when the worker asks
+    for a budget; if it fails, the worker can't deliver TLE(step)
+    verdicts.
+    """
+    src = write(tmp_path, "lento.psc", LENTO_SRC)
+    report = tmp_path / "report.json"
+    proc = run_cli(
+        ["run", str(src), "--max-steps", "50", "--report", str(report)]
+    )
+    assert proc.returncode == 3
+    data = read_report(report)
+    assert data["error"]["code"] == "ERR_STEP_LIMIT"
+    assert "máximo 50" in data["error"]["message"]
+    # Steps should be at least the budget (50) plus 1 — the check is
+    # strict-greater (steps > budget).
+    assert data["steps"] > 50
+    # But not the full ~600k: the engine aborted early.
+    assert data["steps"] < 1000
+
+
+def test_run_no_max_steps_runs_to_completion(tmp_path):
+    """Legacy: no ``--max-steps`` flag → engine runs to completion, exit 0.
+
+    Pins that the entrypoint's default ``os.environ.get(...) is None``
+    path produces the same argv the legacy CLI did.  The LENTO_SRC
+    program is finite, so it completes cleanly with no error.
+    """
+    # Use a tiny, self-contained program (no Leer) so the test doesn't
+    # depend on input plumbing — the bug #2 contract is purely about
+    # the engine CLI's --max-steps handling.
+    src = write(tmp_path, "ok.psc", G2_FORMATO)
+    report = tmp_path / "report.json"
+    proc = run_cli(["run", str(src), "--report", str(report)])
+    assert proc.returncode == 0
+    assert read_report(report)["error"] is None
+
+
 def test_run_output_cap_exceeded_exit_4(tmp_path):
     src = write(tmp_path, "mucho.psc", MUCHO_SRC)
     report = tmp_path / "report.json"

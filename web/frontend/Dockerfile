@@ -20,6 +20,18 @@ RUN npm ci --no-audit --no-fund
 
 # Copy source and build.
 COPY web/frontend/ ./
+# ``VITE_API_URL`` is baked into the static bundle at build time.  The
+# default (empty string) makes the API client use **relative** URLs
+# (e.g. ``/api/login``), which the browser resolves against the current
+# origin and Caddy proxies to the api container.  This is the LOCAL-FIRST
+# rule (plan §Success Criteria) — same-origin, no CORS dance.
+#
+# For an environment where the API lives on a different host (e.g. deploy
+# behind a CDN), override at build time: ``docker compose build
+# --build-arg VITE_API_URL=https://api.example.com`` and the bundle will
+# emit absolute URLs to that origin.
+ARG VITE_API_URL=""
+ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # --- Runtime stage ----------------------------------------------------------

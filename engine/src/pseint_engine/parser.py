@@ -329,6 +329,8 @@ class _Parser:
         tok = self.peek()
         self._tokens_since_statement = 0
         t = tok.type
+        if t is TokenType.IDENTIFIER and self._is_type_name(tok):
+            return self._parse_typed_declaration()
         if t is TokenType.IDENTIFIER:
             return self._parse_identifier_statement()
         if t in _RESERVED_WORDS and self.peek_at(1).type is TokenType.ASSIGN:
@@ -410,6 +412,48 @@ class _Parser:
                 args = self._parse_expr_list()
                 self.expect(TokenType.RPAREN, "')'")
         return SubProcCall(name.line, name.col, name.value, args)
+
+    def _parse_typed_declaration(self) -> Assignment:
+        """Parse a PseInt typed declaration: ``Entero i`` / ``Cadena s <- "x"``.
+
+        Per SPEC §(a) ``type identifier [ "<-" expr ]`` and the official
+        PseInt semantics, ``<type> <ident>`` is sugar for declaring the
+        variable with the given type and optionally initialising it. The
+        evaluator distinguishes three forms via :attr:`Assignment.value`
+        and :attr:`Assignment.type_name`:
+
+        - ``Cadena s``              → ``value=None``, ``type_name="Cadena"``
+          (default-initialised; evaluator picks the type's zero value)
+        - ``Entero i <- 5``         → ``value=IntegerLiteral(5)``, ``type_name="Entero"``
+        - ``Cadena arr()``          → never reached: a procedure call cannot
+          start with a type name, so this is malformed and raises CE (the
+          ``(`` form here would actually be eaten as a function-call
+          expression and the leftover statement would fail).
+        """
+        type_tok = self.advance()  # "Cadena" / "Entero" / etc.
+        type_name = type_tok.value
+        var = self._expect_identifier("variable name")
+        # Typed array declaration: "Cadena arr[3]". The official PseInt
+        # grammar treats this as a Dimension with an element type tag; the
+        # pinned dialect does not surface this form in the SPEC, so we
+        # raise CE rather than guess.  (If/when the corpus needs it,
+        # extend ``Dimension`` with a ``type_name`` field and dispatch here.)
+        if self.match(TokenType.LBRACKET):
+            raise self._error(
+                "las declaraciones de arreglos con tipo explícito no están "
+                "soportadas; usa 'Dimension' o 'Definir'",
+                self.peek(),
+            )
+        value: Expr | None = None
+        if self.match(TokenType.ASSIGN, TokenType.EQ):
+            value = self._parse_expr()
+        return Assignment(
+            type_tok.line,
+            type_tok.col,
+            Identifier(var.line, var.col, var.name),
+            value,
+            type_name=type_name,
+        )
 
     # -- declarations -------------------------------------------------------
 

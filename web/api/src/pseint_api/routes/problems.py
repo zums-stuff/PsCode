@@ -36,6 +36,7 @@ class ProblemCreateRequest(BaseModel):
     ]
     compare_mode: Literal["exact", "token"] = "exact"
     step_budget: int | None = None
+    is_public: bool = False
 
 
 class ProblemPatchRequest(BaseModel):
@@ -53,6 +54,7 @@ class ProblemPatchRequest(BaseModel):
     ] | None = None
     compare_mode: Literal["exact", "token"] | None = None
     step_budget: int | None = None
+    is_public: bool | None = None
 
 
 class ProblemOut(BaseModel):
@@ -64,6 +66,7 @@ class ProblemOut(BaseModel):
     expected_complexity: str
     step_budget: int | None
     compare_mode: str
+    is_public: bool
     author_id: int
     created_at: datetime
 
@@ -80,6 +83,7 @@ def create_problem(
         expected_complexity=req.expected_complexity,
         compare_mode=req.compare_mode,
         step_budget=req.step_budget,
+        is_public=req.is_public,
         author_id=user.id,
     )
     db.add(problem)

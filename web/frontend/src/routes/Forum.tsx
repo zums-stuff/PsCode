@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, listForumThreads } from "../lib/api";
+import { ApiError, api, listForumThreads } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { t } from "../lib/i18n";
 import type { ForumThread, ProblemOut } from "../lib/types";
@@ -26,6 +26,7 @@ export default function Forum() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ForumThread | null>(null);
   const [creating, setCreating] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const problemQuery = useQuery({
     queryKey: ["problem", problemId],
@@ -70,6 +71,11 @@ export default function Forum() {
         />
       ) : (
         <>
+          {toast !== null && (
+            <p className="error" data-testid="forum-toast" role="alert">
+              {toast}
+            </p>
+          )}
           <div className="forum-actions">
             <button
               type="button"
@@ -90,6 +96,11 @@ export default function Forum() {
                 void queryClient.invalidateQueries({
                   queryKey: ["forum", "threads", problemId],
                 });
+              }}
+              onError={(err) => {
+                if (err instanceof ApiError && err.status === 403) {
+                  setToast(t("forum.thread.contestLockToast"));
+                }
               }}
             />
           )}

@@ -95,6 +95,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import subprocess
 import sys
 import threading
 from collections.abc import Callable
@@ -119,8 +120,30 @@ from pseint_api.events import make_run_event
 from pseint_api.ws import broadcast_run_event
 from pseint_engine.lexer import LexError
 from pseint_engine.parser import ParseError, parse
+from pseint_judge.compare import compare_outputs
 from rq import Queue, Retry, Worker
-from run_sandboxed import run_sandboxed
+
+# ``scripts/run_sandboxed.py`` is the sandbox wrapper module (todo 34).
+# The legacy code used ``from run_sandboxed import run_sandboxed`` which
+# only worked when PYTHONPATH included ``infra/scripts/`` directly — that
+# arrangement is hard to reproduce inside the api/worker containers and
+# was always fragile.  We import the module by file path so the wrapper
+# works regardless of where it's mounted.  ``@dataclass`` requires the
+# synthetic module to be in ``sys.modules`` so it can look up
+# ``cls.__module__.__dict__`` for forward-reference resolution; we
+# register it before ``exec_module``.
+_SANDBOX_PATH = Path(os.environ.get("RUN_SANDBOXED", "/app/scripts/run_sandboxed.py"))
+if _SANDBOX_PATH.exists():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("run_sandboxed", _SANDBOX_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"could not load sandbox wrapper from {_SANDBOX_PATH}")
+    _sandbox_mod = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("run_sandboxed", _sandbox_mod)
+    spec.loader.exec_module(_sandbox_mod)
+    run_sandboxed = _sandbox_mod.run_sandboxed
+else:  # pragma: no cover - dev/source-tree fallback
+    from scripts.run_sandboxed import run_sandboxed  # type: ignore[import-not-found]
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +181,12 @@ STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_DONE = "done"
 STATUS_FAILED = "failed"
+
+#: Wall-clock bound for the engine CLI (todo 15 / M9).  subprocess.run(
+#: timeout=…) sends SIGTERM at this deadline; the wrapper converts the
+#: TimeoutExpired into a SandboxResult whose report.error.code is
+#: ERR_STEP_LIMIT, so the worker classifies the verdict as TLE.
+DEFAULT_WALL_TIMEOUT_S = 8.0
 
 
 # ---------------------------------------------------------------------------
@@ -212,9 +241,23 @@ def worker_count() -> int:
 
 
 def _redis_connection(url: str | None = None) -> redis.Redis:
-    """Build a Redis connection from ``REDIS_URL`` (or the default)."""
+    """Build a Redis connection from ``REDIS_URL`` (or the default).
+
+    The worker runs long-lived BLPOP operations against the queue; the
+    default redis-py socket_timeout would kill those after 5s.  We set
+    ``socket_timeout=None`` (the underlying socket honours TCP keepalive
+    instead) and bump ``health_check_interval`` so an idle connection
+    refreshes its file-handle promptly across long BLPOPs.
+
+    Worker-name collisions (old ``pseint-worker-N`` entries left in Redis
+    after a crash) make the worker refuse to start — see the cleanup in
+    ``main()``.  This function only opens the connection.
+    """
     return redis.Redis.from_url(
-        url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        url or os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        socket_timeout=None,
+        socket_keepalive=True,
+        health_check_interval=30,
     )
 
 
@@ -295,21 +338,36 @@ class CaseOutcome:
     error: dict | None = None
 
 
-def _verdict_from_sandbox(sb: Any) -> tuple[str, dict | None, int, int, str]:
-    """Map a ``SandboxResult`` to (verdict, error, steps, wall_ms, output).
+def _verdict_from_sandbox(
+    sb: Any,
+    expected_output: str,
+    *,
+    compare_mode: str = "exact",
+) -> tuple[str, dict | None, int, int, str]:
+    """Map a ``SandboxResult`` + expected output to (verdict, error, steps, wall_ms, output).
 
     The wrapper puts the engine CLI's JSON report in ``sb.report`` and any
     infra failure (ERR_CONTAINER, ERR_SECCOMP_MISSING, ERR_REPORT_PARSE) in
     ``sb.error``.  Container failures are escalated to ``ContainerInfraError``
     by the caller (``process_run``), NOT here — this function is pure.
+
+    Verdict priority (matches ``pseint_judge.verdicts.classify_case``,
+    todo 12): engine error → TLE/RE/CE; otherwise compare stdout vs
+    ``expected_output`` → OK (AC) on match, WA on mismatch.
     """
     report = sb.report or {}
     error = report.get("error")
     steps = int(report.get("steps", 0))
     wall_ms = int(getattr(sb, "wall_ms", 0) or 0)
     output = sb.output or ""
+
     if error is None:
-        return VERDICT_OK, None, steps, wall_ms, output
+        # No engine error → judge by output comparison (todo 12 §comparison).
+        # VERDICT_OK maps to AC at the summary layer; WA passes through as WA.
+        if compare_outputs(expected_output, output, mode=compare_mode)["equal"]:
+            return VERDICT_OK, None, steps, wall_ms, output
+        return VERDICT_WA, None, steps, wall_ms, output
+
     code = error.get("code")
     if code == "ERR_STEP_LIMIT":
         return VERDICT_TLE, error, steps, wall_ms, output
@@ -441,6 +499,25 @@ def build_default_hooks(*, database_url: str | None = None) -> PersistHooks:
             run.wall_ms = wall_ms
         db.commit()
 
+    def _case_to_verdict_db(v: str) -> str:
+        """Translate the judge vocabulary to the API/DB enum.
+
+        The judge engine emits ``OK`` for a successful case (todo 12 verdict
+        classification); the API/DB layer uses ``AC`` (todo 18 DB enum).
+        Other verdicts (``WA``, ``TLE``, ``RE``, ``CE``) pass through.
+        An unmapped or empty value falls back to ``RE`` so the DB enum
+        constraint never rejects the insert.
+        """
+        mapping = {
+            "OK": "AC",
+            "AC": "AC",
+            "WA": "WA",
+            "TLE": "TLE",
+            "RE": "RE",
+            "CE": "CE",
+        }
+        return mapping.get(v, "RE")
+
     def _persist_test_result(
         db: Any,
         run_id: int,
@@ -455,7 +532,11 @@ def build_default_hooks(*, database_url: str | None = None) -> PersistHooks:
                 TestResult(
                     run_id=run_id,
                     case_index=c.case_index,
-                    verdict=c.verdict,
+                    # Translate the judge engine's ``OK`` to the API/DB
+                    # vocabulary ``AC``; the DB enum accepts AC/WA/TLE/
+                    # RE/CE only.  Other judge tokens (WA, TLE, RE, CE)
+                    # pass through unchanged.
+                    verdict=_case_to_verdict_db(c.verdict),
                     steps=c.steps,
                     wall_ms=c.wall_ms,
                     output=c.output,
@@ -657,6 +738,65 @@ def _problem_dict(problem: Any) -> dict[str, Any]:
     }
 
 
+def _step_budget_for_case(problem: Any, tc_input: str | None) -> int:
+    """Per-case step budget (todo bug #2 / SPEC §(k)).
+
+    Computes the hard TLE(step) threshold for one test case using the
+    NORMATIVE SPEC §(k) coefficient table via
+    ``pseint_judge.complexity.expected_steps`` and the SPEC default
+    formula ``2*expected + 1000``.  Falls back to
+    ``problem.step_budget`` (the operator's override) when the
+    complexity is ``"other"`` or the auto formula raises.
+
+    The result is forwarded to the engine CLI as ``--max-steps N`` via
+    ``run_sandboxed(max_steps=...)``; the engine's
+    ``_check_step_budget`` raises ``ERR_STEP_LIMIT`` once ``steps > N``,
+    and the worker classifies the per-case verdict as ``TLE`` (todo 12
+    verdict taxonomy).
+
+    Examples::
+
+        O(1)   → 2*50 + 1000 = 1100  (rounds up via max(50, expected) in
+                                       the seed path; HolaMundo seeds
+                                       step_budget=50 so override wins
+                                       there with 50)
+        O(n=1) → 2*70 + 1000 = 1140
+        other  → problem.step_budget (no auto formula)
+
+    Note: the test helper accepts ``tc_input`` as ``str | None`` so the
+    caller can pass ``tc.input`` directly (or an empty string for
+    cases without input).
+    """
+    from pseint_judge.complexity import expected_steps, n_estimate
+
+    if problem is None:
+        # Defensive: a missing problem is a worker bug — use a small but
+        # non-zero default so the engine still runs.  The wall-time
+        # backstop catches any infinite loop.
+        return 5000
+
+    n = n_estimate(tc_input or "")
+    try:
+        expected = expected_steps(problem.expected_complexity, n)
+    except (ValueError, AttributeError):
+        # ``other`` complexity has no auto formula; ``unknown complexity``
+        # would be a bug.  Either way, fall back to the operator's
+        # override (or a sane default if not set).
+        expected = None
+
+    override = getattr(problem, "step_budget", None)
+    if expected is None:
+        if override is not None and int(override) > 0:
+            return int(override)
+        # Last resort: a generous but finite budget so the run is
+        # still bounded.  The wall-time backstop catches abuse.
+        return 50000
+
+    base = int(override) if override is not None and int(override) > 0 else expected
+    # SPEC §(k) hard TLE cap: 2*expected + 1000.
+    return 2 * base + 1000
+
+
 def _test_case_dict(tc: Any, idx: int) -> dict[str, Any]:
     return {
         "case_index": idx,
@@ -685,8 +825,18 @@ def process_run(
     Returns a dict describing the outcome.  Raises ``ContainerInfraError``
     for retryable container/infra errors so RQ retries up to
     ``MAX_INFRA_RETRIES``.  Verdicts are returned as data — never raised.
+
+    The ``hooks`` kwarg lets tests inject mocks; when RQ invokes the job
+    directly (the production path) the hooks default to the live DB
+    binding via ``build_default_hooks``.  In the legacy test pass,
+    tests that don't supply ``hooks=`` AND that import this function
+    outside of a RQ context still get the no-op ``PersistHooks()`` —
+    that's preserved for backward compatibility.
     """
-    hooks = hooks or PersistHooks()
+    if hooks is None and os.environ.get("DATABASE_URL"):
+        hooks = build_default_hooks()
+    if hooks is None:
+        hooks = PersistHooks()
 
     run = hooks.fetch_run(run_id)
     if run is None:
@@ -699,6 +849,7 @@ def process_run(
 
     contest = hooks.fetch_contest(run.contest_id) if run.contest_id else None
     test_cases = hooks.fetch_test_cases(run.problem_id)
+    problem = hooks.fetch_problem(run.problem_id)
     mode = _mode_for_run(run, contest)
 
     # CE short-circuit: parse-once via the engine's parser.
@@ -743,13 +894,21 @@ def process_run(
     total_wall_ms = 0
 
     for idx, tc in enumerate(test_cases):
+        tc_input = (getattr(tc, "input", "") or "").encode("utf-8")
+        tc_input_str = (getattr(tc, "input", "") or "")
+        tc_expected = getattr(tc, "expected_output", "") or ""
+        # Per-case step budget (todo bug #2): the engine receives
+        # ``--max-steps N`` so ``_check_step_budget`` fires TLE(step) for
+        # infinite loops before the wall-time backstop.  Computed per case
+        # because the n_estimate (whitespace-token count of tc_input)
+        # varies across cases for the same problem.
+        case_budget = _step_budget_for_case(problem, tc_input_str)
         try:
             sb = sandbox_runner(
                 run.source.encode("utf-8"),
-                # Future: when the wrapper supports per-case input we can pass
-                # ``_test_case_dict(tc, idx)["input"]`` via stdin; today the
-                # wrapper pipes only the source, so we leave per-case input
-                # to the engine CLI's default behaviour.
+                input=tc_input,
+                wall_timeout_s=DEFAULT_WALL_TIMEOUT_S,
+                max_steps=case_budget,
             )
         except Exception as e:
             # Any unexpected exception from the sandbox runner itself is an
@@ -765,7 +924,9 @@ def process_run(
                 f"{sb.error.get('message')}"
             )
 
-        verdict, err, steps, wall_ms, output = _verdict_from_sandbox(sb)
+        verdict, err, steps, wall_ms, output = _verdict_from_sandbox(
+            sb, tc_expected
+        )
         outcome = CaseOutcome(
             case_index=idx,
             verdict=verdict,
@@ -831,16 +992,19 @@ def start_workers(
     queue_name: str = QUEUE_NAME,
     with_scheduler: bool = False,
     stop_event: threading.Event | None = None,
-) -> list[Worker]:
-    """Start ``replicas`` (or ``$REPLICAS``) RQ worker threads in-process.
+) -> list[subprocess.Popen]:
+    """Spawn ``replicas`` (or ``$REPLICAS``) ``rq worker`` subprocesses.
 
-    Each ``Worker.work()`` call blocks, so we spawn one daemon thread per
-    worker.  Returns the live Worker handles so the caller (and tests) can
-    inspect ``worker.state`` or ask them to stop via ``stop_event``.
+    Each subprocess runs the ``rq worker`` CLI against ``queue_name`` and
+    binds its signal handlers in the main thread of its own process (the
+    python interpreter restriction that ``signal.signal`` only works in
+    the main thread forbids hosting ``Worker.work()`` in a daemon
+    thread).  Returns the live ``Popen`` handles so the caller can wait
+    on them or terminate them via ``stop_event``.
 
     The caller is responsible for keeping the main thread alive until the
-    workers should exit; once ``stop_event`` is set, ``request_stop`` is sent
-    to each worker and the threads wind down.
+    workers should exit; once ``stop_event`` is set, each subprocess is
+    terminated and reaped.
     """
     if replicas is None:
         replicas = worker_count()
@@ -848,56 +1012,42 @@ def start_workers(
         raise WorkerConfigError(
             f"replicas must be >=1 (got {replicas})"
         )
-    conn = _redis_connection(redis_url)
-    workers: list[Worker] = []
+    redis_url = redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-    def _spawn(idx: int) -> Worker:
-        w = Worker(
-            [queue_name],
-            connection=conn,
-            name=f"pseint-worker-{idx}",
-        )
-        # ``work`` blocks until ``request_stop`` is called or the Redis
-        # connection drops; ``burst=False`` keeps the worker alive forever
-        # (we want a long-running pool, not a one-shot drain).
-        w.work(burst=False, with_scheduler=with_scheduler)
-        return w
+    # RQ's installed console script (``/usr/local/bin/rqworker``) invokes
+    # ``rq.cli:worker``.  We invoke the script directly because
+    # ``python -m rq`` does NOT work (the package has no ``__main__`` and
+    # ``python -m`` requires one).
+    rqworker_bin = os.environ.get("RQWORKER_BIN", "/usr/local/bin/rqworker")
 
-    threads: list[threading.Thread] = []
+    processes: list[subprocess.Popen] = []
     for i in range(replicas):
-        t = threading.Thread(
-            target=_spawn,
-            args=(i,),
-            name=f"pseint-worker-thread-{i}",
-            daemon=True,
-        )
-        t.start()
-        threads.append(t)
+        cmd = [
+            rqworker_bin,
+            queue_name,
+            "--url",
+            redis_url,
+            "--name",
+            f"pseint-worker-{i}",
+        ]
+        if with_scheduler:
+            cmd.append("--with-scheduler")
+        logger.info("spawning rq worker #%d: %s", i, " ".join(cmd))
+        proc = subprocess.Popen(cmd)
+        processes.append(proc)
 
-    # Wait briefly so the Worker objects are constructed before we return.
-    deadline = threading.Event()
-    threading.Timer(0.05, deadline.set).start()
-    deadline.wait(0.1)
-    return _collect_workers(workers, queue_name, conn)
+    return processes
 
 
 def _collect_workers(
-    workers: list[Worker],
+    workers: list[subprocess.Popen],
     queue_name: str,
     conn: Any,
-) -> list[Worker]:
-    """Return the live Worker instances for ``queue_name``.
-
-    RQ registers workers on ``Worker.all(connection=conn)`` once their
-    registration heartbeat runs; we re-fetch so the returned list reflects
-    the actual pool.  ``workers`` is intentionally a starting hint — the
-    freshest view comes from the registry.
-    """
-    from rq.worker import Worker as _Worker
-    try:
-        return list(_Worker.all(queue=queue_name, connection=conn))
-    except (OSError, ConnectionError):  # pragma: no cover - defensive
-        return workers
+) -> list[subprocess.Popen]:
+    """DEPRECATED.  Kept for ABI compatibility — returns the same list it
+    was passed (the subprocess Popen handles now stand in for Worker
+    objects in callers that only check ``.is_alive()``-like behaviour)."""
+    return workers
 
 
 def start_intake_thread(
@@ -928,6 +1078,14 @@ def main(argv: list[str] | None = None) -> int:
 
     Reads ``$REPLICAS`` (default 3), starts that many RQ workers plus the
     intake thread.  The main thread blocks until SIGINT/SIGTERM.
+
+    On startup we delete any *stale* ``pseint-worker-*`` registry entries
+    left in Redis from a previous crash.  Without this, RQ refuses to
+    register a new worker with an already-taken name and the pool never
+    starts.  A stale entry is any registry row whose worker hasn't sent
+    a heartbeat in ``REGISTRY_TTL`` (default 60s) — but in practice, after
+    ``docker compose restart``, we should purge EVERY entry with our
+    naming prefix; the heartbeat won't expire them fast enough.
     """
     import signal
 
@@ -942,6 +1100,17 @@ def main(argv: list[str] | None = None) -> int:
         replicas, QUEUE_NAME,
     )
 
+    # Purge stale worker-name registrations so the new pool can bind.
+    try:
+        from rq.worker import Worker as _Worker
+        conn = _redis_connection()
+        for stale in _Worker.all(connection=conn):
+            if stale.name.startswith("pseint-worker-"):
+                logger.warning("removing stale worker registration: %s", stale.name)
+                stale.register_death()
+    except Exception:  # noqa: BLE001 — best-effort cleanup
+        logger.exception("stale worker cleanup failed (continuing)")
+
     stop_event = threading.Event()
 
     def _shutdown(_signum: int, _frame: Any) -> None:
@@ -955,16 +1124,35 @@ def main(argv: list[str] | None = None) -> int:
     workers = start_workers(replicas, stop_event=stop_event)
 
     try:
-        # Block on the intake thread; workers run independently.
+        # Block on the intake thread; workers run as separate processes.
         while intake.is_alive() and not stop_event.is_set():
             intake.join(timeout=1.0)
+            # Bail out if any worker subprocess has died unexpectedly.
+            for i, proc in enumerate(workers):
+                if proc.poll() is not None:
+                    logger.error(
+                        "rq worker #%d exited with code %d; stopping",
+                        i, proc.returncode,
+                    )
+                    stop_event.set()
+                    break
     finally:
+        logger.info("stopping intake + rq worker subprocesses")
         stop_event.set()
-        for w in workers:
+        for proc in workers:
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:  # noqa: BLE001 — defensive
+                    logger.exception("error terminating %r", proc)
+        # Reap so we don't leak zombies.
+        for proc in workers:
             try:
-                w.request_stop()
-            except Exception:  # pragma: no cover - defensive
-                logger.exception("error stopping worker %s", w.name)
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning("worker did not terminate in time, killing")
+                proc.kill()
+                proc.wait(timeout=5)
     return 0
 
 
