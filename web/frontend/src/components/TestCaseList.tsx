@@ -23,7 +23,7 @@ export default function TestCaseList({
 
   return (
     <div className="test-case-list">
-      <table className="data-table">
+      <table className="datatable">
         <thead>
           <tr>
             <th>#</th>
@@ -36,10 +36,10 @@ export default function TestCaseList({
           {visible.map((c) => (
             <tr key={c.case_index}>
               <td>{c.case_index + 1}</td>
-              <td>
+              <td style={{ textAlign: "left" }}>
                 <pre className="practice-pre">{c.input ?? "—"}</pre>
               </td>
-              <td>
+              <td style={{ textAlign: "left" }}>
                 {c.expected_output === null ? (
                   <span className="hint">{t("submissions.caseHidden")}</span>
                 ) : (

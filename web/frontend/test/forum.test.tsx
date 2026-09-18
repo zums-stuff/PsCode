@@ -20,6 +20,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Forum from "../src/routes/Forum";
 import { AuthProvider, type AuthUser } from "../src/lib/auth";
+import { ConfirmProvider } from "../src/lib/confirm";
 
 type MockHandler = (path: string, init?: RequestInit) => unknown;
 
@@ -59,11 +60,13 @@ function renderForum(initialEntry: string, user: AuthUser | null = null) {
   const ui: ReactElement = (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <Routes>
-            <Route path="/forum/problem/:id" element={<Forum />} />
-          </Routes>
-        </MemoryRouter>
+        <ConfirmProvider>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <Routes>
+              <Route path="/forum/problem/:id" element={<Forum />} />
+            </Routes>
+          </MemoryRouter>
+        </ConfirmProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -395,7 +398,6 @@ describe("Forum page — teacher moderation", () => {
 
   it("teacher can delete a post (DELETE) after confirm", async () => {
     const deleteSpy = vi.fn(() => undefined);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     mockFetch({
       "GET /api/problems/42": problem,
       "GET /api/problems/42/threads": [threadNormal],
@@ -410,9 +412,12 @@ describe("Forum page — teacher moderation", () => {
 
     fireEvent.click(screen.getByTestId("delete-button-10"));
 
+    const confirmDialog = await screen.findByRole("alertdialog");
+    const confirmBtn = confirmDialog.querySelector(".confirm-danger") as HTMLButtonElement;
+    fireEvent.click(confirmBtn);
+
     await waitFor(() => {
       expect(deleteSpy).toHaveBeenCalled();
     });
-    expect(confirmSpy).toHaveBeenCalled();
   });
 });

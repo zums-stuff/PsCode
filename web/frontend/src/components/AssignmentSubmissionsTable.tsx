@@ -49,10 +49,10 @@ export default function AssignmentSubmissionsTable({
 
   return (
     <div>
-      <table>
+      <table className="datatable">
         <thead>
           <tr>
-            <th>{t("admin.assignments.columns.student")}</th>
+            <th style={{ textAlign: "left" }}>{t("admin.assignments.columns.student")}</th>
             <th>{t("admin.assignments.columns.verdict")}</th>
             <th>{t("admin.assignments.columns.steps")}</th>
             <th>{t("admin.assignments.columns.source")}</th>
@@ -62,7 +62,7 @@ export default function AssignmentSubmissionsTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.user_id}>
-              <td>{row.username}</td>
+              <td style={{ textAlign: "left" }}>{row.username}</td>
               <td>{row.best_verdict ?? "—"}</td>
               <td>{row.steps ?? "—"}</td>
               <td>

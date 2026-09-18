@@ -1,15 +1,16 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { t } from "../../lib/i18n";
+import { useToast } from "../../lib/toast";
+import { useConfirm } from "../../lib/confirm";
 import type { ContestListItem, Page } from "../../lib/types";
 import ContestStatusBadge from "../../components/ContestStatusBadge";
 
-/** /admin/contests — contest list with status badge, scoring, teams, actions. */
 export default function AdminContests() {
   const queryClient = useQueryClient();
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "contests"],
@@ -17,13 +18,19 @@ export default function AdminContests() {
   });
 
   async function handleDelete(id: number) {
-    if (!window.confirm(t("admin.contests.deleteConfirm"))) return;
-    setDeleteError(null);
+    const ok = await confirm({
+      title: t("admin.contests.delete"),
+      message: t("admin.contests.deleteConfirm"),
+      confirmLabel: t("admin.contests.delete"),
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/contests/${id}`);
+      toast.success(t("admin.contests.deleted"));
       await queryClient.invalidateQueries({ queryKey: ["admin", "contests"] });
     } catch {
-      setDeleteError(t("admin.contests.deleteError"));
+      toast.error(t("admin.contests.deleteError"));
     }
   }
 
@@ -49,23 +56,21 @@ export default function AdminContests() {
         </div>
       )}
 
-      {deleteError && <p className="error">{deleteError}</p>}
-
       {!isLoading && !isError && items.length === 0 && (
         <p>{t("admin.contests.empty")}</p>
       )}
 
       {items.length > 0 && (
-        <table>
+        <table className="datatable">
           <thead>
             <tr>
               <th>{t("admin.contests.columns.id")}</th>
-              <th>{t("admin.contests.columns.title")}</th>
-              <th>{t("admin.contests.columns.start")}</th>
-              <th>{t("admin.contests.columns.end")}</th>
-              <th>{t("admin.contests.columns.status")}</th>
-              <th>{t("admin.contests.columns.scoring")}</th>
-              <th>{t("admin.contests.columns.teams")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.title")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.start")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.end")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.status")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.scoring")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.teams")}</th>
               <th>{t("admin.contests.columns.actions")}</th>
             </tr>
           </thead>
@@ -73,9 +78,9 @@ export default function AdminContests() {
             {items.map((contest) => (
               <tr key={contest.id}>
                 <td>{contest.id}</td>
-                <td>{contest.title}</td>
-                <td>{new Date(contest.start_at).toLocaleString()}</td>
-                <td>{new Date(contest.end_at).toLocaleString()}</td>
+                <td style={{ textAlign: "left" }}>{contest.title}</td>
+                <td style={{ textAlign: "left" }}>{new Date(contest.start_at).toLocaleString()}</td>
+                <td style={{ textAlign: "left" }}>{new Date(contest.end_at).toLocaleString()}</td>
                 <td>
                   <ContestStatusBadge
                     startAt={contest.start_at}

@@ -53,8 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem(TOKEN_KEY) !== null && readStoredUser() === null;
   });
 
+  if (token) setAuthToken(token);
+
   useEffect(() => {
-    if (token) setAuthToken(token);
     if (!token) {
       setInitializing(false);
       return;

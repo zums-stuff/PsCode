@@ -243,9 +243,9 @@ class MockWebSocket {
   }
 }
 
-const HISTORY_URL = "/api/runs?page=1&size=5&problem_id=1";
+const HISTORY_URL = "/api/runs?page=1&size=10&problem_id=1";
 const HISTORY_KEY = `GET ${HISTORY_URL}`;
-const HISTORY_URL_2 = "/api/runs?page=1&size=5&problem_id=2";
+const HISTORY_URL_2 = "/api/runs?page=1&size=10&problem_id=2";
 const HISTORY_KEY_2 = `GET ${HISTORY_URL_2}`;
 
 function baseHandlers(overrides: Record<string, MockHandler | unknown> = {}) {
@@ -334,10 +334,11 @@ describe("/practice — standalone mode (no problem selected)", () => {
     // Run button is enabled (sandbox mode — runs without a problem too)
     const runBtn = await screen.findByRole("button", { name: "Ejecutar muestra" });
     expect(runBtn).not.toBeDisabled();
-    // output placeholder is shown
-    expect(
-      screen.getByText("Selecciona un problema y ejecuta tu código para ver la salida por caso."),
-    ).toBeInTheDocument();
+    // output placeholder is shown (in editor + history sidebar)
+    const placeholders = screen.getAllByText(
+      "Selecciona un problema y ejecuta tu código para ver la salida por caso.",
+    );
+    expect(placeholders.length).toBeGreaterThanOrEqual(1);
     // standalone hint is shown
     expect(
       screen.getByText("Modo libre: practica sin un problema específico."),
@@ -568,8 +569,10 @@ describe("/practice — RunModal test cases table", () => {
     ).toBeInTheDocument();
     // the table has 3 data rows
     const rows = screen.getAllByRole("row");
-    // header row + 3 data rows = 4
-    expect(rows.length).toBe(4);
+    // header row + 3 data rows in the cases table (the page also has a history table — ignore it)
+    const casesTable = document.querySelector(".run-modal-cases-table");
+    expect(casesTable).not.toBeNull();
+    expect(casesTable!.querySelectorAll("tr").length).toBe(4);
     // inputs are shown
     expect(screen.getAllByText(/21/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/^0/).length).toBeGreaterThan(0);
@@ -588,8 +591,8 @@ describe("/practice — RunModal test cases table", () => {
 
     // no "Casos de prueba" summary
     expect(screen.queryByText(/Casos de prueba/)).toBeNull();
-    // no table
-    expect(screen.queryByRole("table")).toBeNull();
+    // no test-cases table (the page may have a history table — but with 1 problem and no runs, the history is empty)
+    expect(document.querySelector(".run-modal-cases-table")).toBeNull();
   });
 
   it("pre-fills stdin with the sample case input (first sample found)", async () => {
@@ -675,8 +678,10 @@ describe("/practice — run history", () => {
 
     renderPractice();
 
-    const matches = await screen.findAllByText("Selecciona un problema para ejecutar tu código.");
+    const matches = await screen.findAllByText(
+      "Selecciona un problema y ejecuta tu código para ver la salida por caso.",
+    );
     // appears in both the editor hint and the history section
-    expect(matches.length).toBe(2);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 });

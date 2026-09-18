@@ -1,10 +1,45 @@
-/* Solve page (plan todo 29): 3-pane grid, stacked on mobile. */
+/* Solve page — Codeforces-like layout: full-width statement, 2-col grid below. */
 
+.solve-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1rem 0 4rem;
+}
+
+.solve-page-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+  color: var(--text);
+}
+
+/* Full-width statement on top */
+.solve-statement-section {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+/* Two-column grid: editor | sidebar */
 .solve-grid {
   display: grid;
-  grid-template-columns: 1fr 1.5fr 1fr;
+  grid-template-columns: 1fr 22rem;
   gap: 1rem;
   align-items: start;
+}
+
+.solve-editor-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+}
+.solve-editor-section h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
 .solve-statement,
@@ -47,6 +82,88 @@
 
 .solve-notice {
   color: var(--danger);
+}
+
+/* --- sidebar --- */
+
+.solve-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.solve-sidebar h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  color: var(--text);
+}
+
+.solve-contest-materials {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.85rem;
+}
+.solve-contest-materials a {
+  font-weight: 500;
+}
+
+.solve-my-runs {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.6rem 0.85rem;
+}
+
+.my-runs-table {
+  width: 100%;
+  font-size: 0.85rem;
+  border-collapse: collapse;
+}
+.my-runs-table th,
+.my-runs-table td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.my-runs-table th {
+  font-weight: 600;
+  background: var(--surface-2);
+  text-align: left;
+}
+.my-runs-row {
+  cursor: pointer;
+}
+.my-runs-row:hover {
+  background: var(--surface-2);
+}
+
+.my-runs-expanded-row td {
+  padding: 0.5rem;
+  background: var(--surface-2);
+}
+.my-runs-expanded-content {
+  padding: 0.25rem 0;
+}
+.my-runs-expanded-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin: 0 0 0.4rem;
+}
+
+.my-runs-cases-table {
+  width: 100%;
+  font-size: 0.8rem;
+  border-collapse: collapse;
+}
+.my-runs-cases-table th,
+.my-runs-cases-table td {
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.my-runs-cases-table th {
+  background: var(--bg);
+  font-weight: 600;
 }
 
 /* --- practice sandbox (plan todo 30) --- */
@@ -150,6 +267,223 @@
 
 @media (max-width: 900px) {
   .solve-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- sticky submit bar (P1 UX) --- */
+
+.solve-sticky-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.solve-shortcut-hint {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* --- per-case progress indicators (P1 UX) --- */
+
+.solve-results-progress {
+  margin: 0.75rem 0;
+}
+
+.case-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.case-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 2px solid var(--border);
+  background: var(--surface-2);
+  color: var(--muted);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.case-indicator--pass {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.case-indicator--fail {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.case-indicator--tle {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.case-indicator--re {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.case-indicator--ce {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.case-indicator--pending {
+  opacity: 0.5;
+}
+
+.case-indicator-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+
+/* --- diff view for WA cases (P1 UX) --- */
+
+.diff-view {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--surface-2);
+}
+
+.diff-view h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.diff-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.diff-column {
+  min-width: 0;
+}
+
+.diff-column strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.diff-pre {
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.diff-column--actual .diff-pre {
+  border-left: 3px solid var(--danger);
+}
+
+.diff-column--expected .diff-pre {
+  border-left: 3px solid var(--ok);
+}
+
+@media (max-width: 900px) {
+  .diff-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Codeforces-style statement sections --- */
+
+.cf-section {
+  margin-bottom: 1rem;
+}
+
+.cf-section-heading {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+  color: var(--text);
+}
+
+.cf-note {
+  font-style: italic;
+  color: var(--muted);
+  border-left: 3px solid var(--border);
+  padding-left: 0.75rem;
+}
+
+.cf-constraints ul,
+.cf-constraints ol {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.cf-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cf-example-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.cf-example-label {
+  font-weight: 600;
+  font-size: 0.8rem;
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+}
+
+.cf-example-pre {
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 900px) {
+  .cf-example-pair {
     grid-template-columns: 1fr;
   }
 }

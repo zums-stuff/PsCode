@@ -189,13 +189,13 @@ export default function AdminClassDetail() {
         <p>{t("admin.assignments.empty")}</p>
       )}
       {assignmentsQuery.data && assignmentsQuery.data.items.length > 0 && (
-        <table>
+        <table className="datatable">
           <thead>
             <tr>
-              <th>{t("admin.assignments.columns.deadline")}</th>
-              <th>{t("admin.assignments.problem")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.assignments.columns.deadline")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.assignments.problem")}</th>
               <th>{t("admin.assignments.columns.submissions")}</th>
-              <th>{t("admin.assignments.columns.verdict")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.assignments.columns.verdict")}</th>
             </tr>
           </thead>
           <tbody>
@@ -211,8 +211,8 @@ export default function AdminClassDetail() {
                     )
                   }
                 >
-                  <td>{new Date(a.deadline).toLocaleString()}</td>
-                  <td>
+                  <td style={{ textAlign: "left" }}>{new Date(a.deadline).toLocaleString()}</td>
+                  <td style={{ textAlign: "left" }}>
                     <Link
                       to={`/admin/classes/${cls!.id}/assignments/${a.id}`}
                       onClick={(e) => e.stopPropagation()}
@@ -221,7 +221,7 @@ export default function AdminClassDetail() {
                     </Link>
                   </td>
                   <td>{count ?? "—"}</td>
-                  <td>
+                  <td style={{ textAlign: "left" }}>
                     {a.status === "open"
                       ? t("admin.assignments.status.open")
                       : t("admin.assignments.status.closed")}

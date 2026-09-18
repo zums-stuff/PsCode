@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getProblemCases } from "../lib/api";
 import { t } from "../lib/i18n";
@@ -10,21 +10,18 @@ import type {
   RunOut,
 } from "../lib/types";
 import CodeMirrorEditor from "../components/CodeMirrorEditor";
-import Markdown from "../components/Markdown";
 import PracticeOutputPanel from "../components/PracticeOutputPanel";
 import RunModal from "../components/RunModal";
-import VerdictBadge, { RunStatusBadge } from "../components/VerdictBadge";
+import VerdictBadge from "../components/VerdictBadge";
+import SolveStatementPane from "../components/SolveStatementPane";
+import { SkeletonRow } from "../components/Skeleton";
 import { useRunSocket } from "../lib/ws";
+import { useSubmitShortcut } from "../lib/useSubmitShortcut";
 
 const TERMINAL_STATUSES = new Set(["done", "failed"]);
-const HISTORY_SIZE = 5;
+const HISTORY_SIZE = 10;
 const POLL_MS = 2000;
 
-/**
- * Derive a PseInt procedure name from a problem title for the default source
- * template (plan todo 30): strip diacritics, collapse non-word runs to
- * underscores, never start with a digit.
- */
 function templateSource(title: string): string {
   const ascii = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const name = ascii.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -32,12 +29,6 @@ function templateSource(title: string): string {
   return `Proceso ${safe || "Main"}\n\nFinProceso`;
 }
 
-/**
- * /practice — practice sandbox (plan todo 30 / C4). Works standalone (just
- * editor + stdin + output) or with a problem selected (statement, sample
- * input pre-fill, per-case output). The "Pick a problem" section is
- * collapsible; the Run button is disabled when no problem is selected.
- */
 export default function Practice() {
   const queryClient = useQueryClient();
   const [problemId, setProblemId] = useState<number | null>(null);
@@ -46,6 +37,7 @@ export default function Practice() {
   const [runId, setRunId] = useState<number | null>(null);
   const [run, setRun] = useState<RunDetailOut | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null);
 
   const { events } = useRunSocket();
 
@@ -76,11 +68,6 @@ export default function Practice() {
     enabled: problemId !== null,
   });
 
-  const practiceRuns = (historyQuery.data?.items ?? []).filter(
-    (r) => r.kind === "practice",
-  );
-
-  // Poll the active run until a terminal status (fallback; WS accelerates).
   useEffect(() => {
     if (runId === null) return;
     let cancelled = false;
@@ -92,7 +79,7 @@ export default function Practice() {
         setRun(detail);
         if (TERMINAL_STATUSES.has(detail.status)) return;
       } catch {
-        // transient — keep polling
+        // transient
       }
       timer = setTimeout(poll, POLL_MS);
     }
@@ -103,8 +90,6 @@ export default function Practice() {
     };
   }, [runId]);
 
-  // WS events: refetch the history strip and, when the event matches the
-  // active run, refresh its detail immediately.
   useEffect(() => {
     if (events.length === 0) return;
     void queryClient.invalidateQueries({ queryKey: ["practice", "history"] });
@@ -114,10 +99,13 @@ export default function Practice() {
         .get<RunDetailOut>(`/api/runs/${runId}`)
         .then((detail) => setRun(detail))
         .catch(() => {
-          // transient — the poll loop will pick it up
+          // transient
         });
     }
   }, [events, queryClient, runId]);
+
+  const handleOpenRunModal = useCallback(() => setModalOpen(true), []);
+  useSubmitShortcut(handleOpenRunModal);
 
   function handleProblemChange(value: string) {
     const id = value === "" ? null : Number(value);
@@ -145,16 +133,20 @@ export default function Practice() {
     }
   }
 
-  function handleHistorySelect(id: number) {
-    setRunId(id);
-    setRun(null);
+  function resetCode() {
+    if (problemId !== null) {
+      const item = problemsQuery.data?.items.find((p) => p.id === problemId);
+      setSource(item !== undefined ? templateSource(item.title) : "Proceso P\n\nFinProceso");
+    } else {
+      setSource("Proceso P\n\nFinProceso");
+    }
   }
 
   if (problemsQuery.isLoading) {
     return (
-      <div>
+      <div className="practice-page">
         <h1>{t("student.practice.title")}</h1>
-        <p>{t("student.practice.loading")}</p>
+        <SkeletonRow lines={4} />
       </div>
     );
   }
@@ -162,7 +154,7 @@ export default function Practice() {
   return (
     <div className="practice-page">
       <h1>{t("student.practice.title")}</h1>
-      <p className="hint">{t("student.practice.subtitle")}</p>
+      <p className="practice-subtitle">{t("student.practice.subtitle")}</p>
 
       {problemsQuery.isError ? (
         <p className="error">{t("student.practice.error")}</p>
@@ -176,7 +168,7 @@ export default function Practice() {
             data-testid="practice-problem-select"
           >
             <option value="">{t("student.practice.selectProblem")}</option>
-            {problemsQuery.data?.items.map((p) => (
+            {(problemsQuery.data?.items ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.title}
               </option>
@@ -185,109 +177,118 @@ export default function Practice() {
         </details>
       )}
 
-      {problemQuery.isError && (
-        <p className="error">{t("student.practice.error")}</p>
-      )}
-
       {problemId === null && (
-        <p className="hint practice-standalone-hint">{t("student.practice.standalone")}</p>
+        <p className="practice-standalone-hint">{t("student.practice.standalone")}</p>
       )}
 
-      <div className="practice-grid">
-        {problemQuery.data !== undefined && (
-          <section className="practice-statement">
-            <h2>{problemQuery.data.title}</h2>
-            <Markdown source={problemQuery.data.statement} />
+      {problemId !== null && (
+        problemQuery.isLoading ? <SkeletonRow lines={4} /> :
+        problemQuery.isError ? <p className="error">{t("student.practice.error")}</p> :
+        problemQuery.data && (
+          <section className="practice-statement-section" data-testid="practice-statement">
+            <SolveStatementPane problem={problemQuery.data} />
           </section>
-        )}
+        )
+      )}
 
-        <section className="practice-editor">
-          <div className="practice-toolbar">
-            <button
-              type="button"
-              className="primary"
-              onClick={() => setModalOpen(true)}
-            >
-              {t("student.practice.run")}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                setSource(
-                  problemQuery.data !== undefined
-                    ? templateSource(problemQuery.data.title)
-                    : "Proceso P\n\nFinProceso",
-                )
-              }
-            >
-              {t("solve.reset")}
-            </button>
-          </div>
-          {problemId === null && (
-            <p className="hint">{t("student.practice.noProblemSelected")}</p>
-          )}
-          <CodeMirrorEditor value={source} onChange={setSource} />
-          {run !== null ? (
+      {problemId !== null && (
+        <div className="practice-grid">
+          <section className="practice-editor-section">
+            <h2>{t("solve.editor")}</h2>
+            <div className="practice-toolbar">
+              <button
+                type="button"
+                className="primary"
+                onClick={handleOpenRunModal}
+              >
+                {t("student.practice.run")}
+                <span className="solve-shortcut-hint" aria-hidden="true">{t("solve.submitShortcut")}</span>
+              </button>
+              <button type="button" onClick={resetCode}>{t("solve.reset")}</button>
+            </div>
+            <CodeMirrorEditor value={source} onChange={setSource} />
+            <h3 className="practice-h3">Salida de práctica</h3>
             <PracticeOutputPanel
               run={run}
               testCases={casesQuery.data ?? []}
               stdin={stdin}
               stepBudget={problemQuery.data?.step_budget ?? null}
             />
-          ) : (
-            <section className="solve-results">
-              <h2>{t("solve.practice.title")}</h2>
-              <p className="hint">{t("student.practice.outputPlaceholder")}</p>
-            </section>
-          )}
-        </section>
+          </section>
 
-        <section className="practice-history">
-          <h2>{t("student.practice.history")}</h2>
-          {problemId === null ? (
-            <p className="hint">{t("student.practice.noProblemSelected")}</p>
-          ) : (
-            <>
-              {historyQuery.isLoading && (
-                <p className="hint">{t("solve.loading")}</p>
-              )}
-              {historyQuery.isError && (
-                <p className="error">{t("student.practice.error")}</p>
-              )}
-              {historyQuery.data !== undefined && practiceRuns.length === 0 && (
-                <p className="hint">{t("student.practice.emptyHistory")}</p>
-              )}
-              {practiceRuns.length > 0 && (
-                <ul className="practice-history-list">
-                  {practiceRuns.map((r) => (
-                    <li key={r.id}>
-                      <button
-                        type="button"
-                        className={
-                          r.id === runId ? "practice-history-active" : undefined
-                        }
-                        onClick={() => handleHistorySelect(r.id)}
-                      >
-                        <span className="practice-run-id">#{r.id}</span>
-                        {r.summary_verdict !== null ? (
-                          <VerdictBadge verdict={r.summary_verdict} />
-                        ) : r.status === "done" || r.status === "failed" ? (
-                          <span className="hint">{t("student.practice.noCase")}</span>
-                        ) : (
-                          <RunStatusBadge status={r.status} />
-                        )}
-                        <span className="practice-run-steps">
-                          {r.steps ?? "—"}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </section>
-      </div>
+          <aside className="practice-runs-section" data-testid="practice-runs">
+            <h3>{t("student.practice.runsHistory")}</h3>
+            {historyQuery.isLoading ? <SkeletonRow lines={3} /> :
+             historyQuery.isError ? <p className="error">{t("student.practice.error")}</p> :
+             ((historyQuery.data?.items ?? []).filter(r => r.kind === 'practice')).length === 0 ? <p className="hint">{t("student.practice.noRunsYet")}</p> :
+             <table className="datatable my-runs-table">
+              <thead>
+                <tr>
+                  <th>{t("solve.col.when")}</th>
+                  <th>{t("solve.col.verdict")}</th>
+                  <th>{t("solve.col.time")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                 {((historyQuery.data?.items ?? []).filter(r => r.kind === 'practice')).map((r) => (
+                  <tr
+                    key={r.id}
+                    className="my-runs-row"
+                    data-testid={`practice-history-${r.id}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`#${r.id}`}
+                    onClick={() => {
+                      setSelectedHistoryId(r.id);
+                      setRunId(r.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedHistoryId(r.id);
+                        setRunId(r.id);
+                      }
+                    }}
+                  >
+                    <td style={{ textAlign: "left" }}>#{r.id}</td>
+                    <td style={{ textAlign: "left" }}>{new Date(r.created_at).toLocaleString()}</td>
+                    <td>{r.summary_verdict ? <VerdictBadge verdict={r.summary_verdict} /> : "—"}</td>
+                    <td>{r.steps ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            }
+          </aside>
+        </div>
+      )}
+
+      {problemId === null && (
+        <div className="practice-grid">
+          <section className="practice-editor-section practice-editor-full">
+            <h2>{t("solve.editor")}</h2>
+            <div className="practice-toolbar">
+              <button type="button" className="primary" onClick={handleOpenRunModal}>
+                {t("student.practice.run")}
+                <span className="solve-shortcut-hint" aria-hidden="true">{t("solve.submitShortcut")}</span>
+              </button>
+              <button type="button" onClick={resetCode}>{t("solve.reset")}</button>
+            </div>
+            <CodeMirrorEditor value={source} onChange={setSource} />
+            <h3 className="practice-h3">Salida de práctica</h3>
+            <PracticeOutputPanel
+              run={null}
+              testCases={[]}
+              stdin={""}
+              stepBudget={null}
+            />
+          </section>
+          <aside className="practice-runs-section">
+            <h3>{t("student.practice.runsHistory")}</h3>
+            <p className="hint">{t("student.practice.outputPlaceholder")}</p>
+          </aside>
+        </div>
+      )}
 
       {modalOpen && (
         <RunModal

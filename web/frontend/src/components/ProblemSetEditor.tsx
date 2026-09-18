@@ -164,11 +164,11 @@ export default function ProblemSetEditor({
     <div>
       {problems.length === 0 && <p>{t("admin.contests.problems.empty")}</p>}
       {problems.length > 0 && (
-        <table>
+        <table className="datatable">
           <thead>
             <tr>
               <th>{t("admin.contests.columns.id")}</th>
-              <th>{t("admin.contests.columns.title")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.contests.columns.title")}</th>
               <th>{t("admin.contests.problems.reorder")}</th>
               <th>{t("admin.contests.columns.actions")}</th>
             </tr>
@@ -177,7 +177,7 @@ export default function ProblemSetEditor({
             {problems.map((p, i) => (
               <tr key={p.problem_id}>
                 <td>{p.problem_id}</td>
-                <td>{p.title}</td>
+                <td style={{ textAlign: "left" }}>{p.title}</td>
                 <td>
                   <PhaseAwareActions phase={phase}>
                     <button

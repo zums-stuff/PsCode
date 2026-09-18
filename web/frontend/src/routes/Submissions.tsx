@@ -9,6 +9,7 @@ import RunActions from "../components/RunActions";
 import SourceView from "../components/SourceView";
 import TestCaseList from "../components/TestCaseList";
 import VerdictBadge, { RunStatusBadge } from "../components/VerdictBadge";
+import { SkeletonTable } from "../components/Skeleton";
 import { useRunSocket } from "../lib/ws";
 
 const PAGE_SIZE = 20;
@@ -114,7 +115,7 @@ export default function Submissions() {
     <div>
       <h1>{t("student.submissions.title")}</h1>
 
-      {runsQuery.isLoading && <p>{t("results.loading")}</p>}
+      {runsQuery.isLoading && <SkeletonTable rows={5} cols={8} />}
       {runsQuery.isError && (
         <div>
           <p className="error">{t("results.loadError")}</p>
@@ -131,7 +132,7 @@ export default function Submissions() {
 
       {runsQuery.data !== undefined && runsQuery.data.items.length > 0 && (
         <>
-          <table className="data-table">
+          <table className="datatable">
             <thead>
               <tr>
                 <th />
@@ -212,8 +213,8 @@ function RunRow({ run, expanded, onToggle, isBest, onRetry }: RunRowProps) {
         </td>
         <td>{run.steps ?? "—"}</td>
         <td>{run.wall_ms ?? "—"}</td>
-        <td>{formatDate(run.created_at)}</td>
-        <td>{t(`results.kind.${run.kind}`)}</td>
+        <td style={{ textAlign: "left" }}>{formatDate(run.created_at)}</td>
+        <td style={{ textAlign: "left" }}>{t(`results.kind.${run.kind}`)}</td>
         <td>
           <RunActions run={run} onViewDetail={onToggle} onResubmit={onRetry} />
         </td>

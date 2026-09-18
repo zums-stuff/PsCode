@@ -285,7 +285,7 @@ function MyRuns({ contestId }: { contestId: number }) {
   if (runs.length === 0) return <p className="hint">{t("results.empty")}</p>;
 
   return (
-    <table>
+    <table className="datatable">
       <thead>
         <tr>
           <th>{t("results.columns.problem")}</th>
@@ -302,7 +302,7 @@ function MyRuns({ contestId }: { contestId: number }) {
             <td>{run.summary_verdict ?? "—"}</td>
             <td>{run.steps ?? "—"}</td>
             <td>{run.wall_ms !== null ? `${run.wall_ms}ms` : "—"}</td>
-            <td>{new Date(run.created_at).toLocaleString("es-MX")}</td>
+            <td style={{ textAlign: "left" }}>{new Date(run.created_at).toLocaleString("es-MX")}</td>
           </tr>
         ))}
       </tbody>

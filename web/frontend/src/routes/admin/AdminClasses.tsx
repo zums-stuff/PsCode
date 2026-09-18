@@ -3,13 +3,15 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { t } from "../../lib/i18n";
+import { useToast } from "../../lib/toast";
+import { useConfirm } from "../../lib/confirm";
 import type { ClassOut } from "../../lib/types";
 import ClassCodeDisplay from "../../components/ClassCodeDisplay";
 
-/** /admin/classes — class list with join codes, open links, delete. */
 export default function AdminClasses() {
   const queryClient = useQueryClient();
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "classes"],
@@ -17,13 +19,19 @@ export default function AdminClasses() {
   });
 
   async function handleDelete(id: number) {
-    if (!window.confirm(t("admin.classes.deleteConfirm"))) return;
-    setDeleteError(null);
+    const ok = await confirm({
+      title: t("admin.classes.delete"),
+      message: t("admin.classes.deleteConfirm"),
+      confirmLabel: t("admin.classes.delete"),
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await api.delete(`/api/classes/${id}`);
+      toast.success(t("admin.classes.deleted"));
       await queryClient.invalidateQueries({ queryKey: ["admin", "classes"] });
     } catch {
-      setDeleteError(t("admin.classes.deleteError"));
+      toast.error(t("admin.classes.deleteError"));
     }
   }
 
@@ -47,17 +55,15 @@ export default function AdminClasses() {
         </div>
       )}
 
-      {deleteError && <p className="error">{deleteError}</p>}
-
       {data && data.length === 0 && <p>{t("admin.classes.empty")}</p>}
 
       {data && data.length > 0 && (
-        <table>
+        <table className="datatable">
           <thead>
             <tr>
               <th>{t("admin.classes.columns.id")}</th>
-              <th>{t("admin.classes.columns.name")}</th>
-              <th>{t("admin.classes.columns.code")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.classes.columns.name")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.classes.columns.code")}</th>
               <th>{t("admin.classes.columns.actions")}</th>
             </tr>
           </thead>
@@ -65,8 +71,8 @@ export default function AdminClasses() {
             {data.map((cls) => (
               <tr key={cls.id}>
                 <td>{cls.id}</td>
-                <td>{cls.name}</td>
-                <td>
+                <td style={{ textAlign: "left" }}>{cls.name}</td>
+                <td style={{ textAlign: "left" }}>
                   <ClassCodeDisplay code={cls.code} />
                 </td>
                 <td>

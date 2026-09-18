@@ -42,43 +42,46 @@ export default function StudentLayout() {
   }
 
   function navClass(item: StudentNavItem): string {
-    return isNavItemActive(item, location.pathname)
-      ? "student-nav-link student-nav-link-active"
-      : "student-nav-link";
+    const active = isNavItemActive(item, location.pathname);
+    const classes: string[] = [];
+    if (active) classes.push("current", "student-nav-link-active");
+    return classes.join(" ");
   }
 
   return (
     <div className="student-layout">
-      <header className="student-header">
+      <header className="student-header roundbox">
         <span className="student-brand" data-testid="student-brand">
           {t("app.title")}
         </span>
         <div className="student-header-spacer" />
         <ThemeToggle compact />
         <nav>
-          {PRIMARY_NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={navClass(item)}
-              data-testid={`student-nav-${item.to.replace(/^\//, "") || "home"}`}
-            >
-              {t(item.labelKey)}
-            </NavLink>
-          ))}
-          {user?.role !== "student" && (
-            <NavLink
-              to="/admin/problems"
-              className={({ isActive }) =>
-                isActive
-                  ? "student-nav-link student-nav-link-active"
-                  : "student-nav-link"
-              }
-              data-testid="student-nav-admin"
-            >
-              {t("student.nav.admin")}
-            </NavLink>
-          )}
+          <ul className="menu-list">
+            {PRIMARY_NAV.map((item) => (
+              <li key={item.to} className={navClass(item)}>
+                <NavLink
+                  to={item.to}
+                  data-testid={`student-nav-${item.to.replace(/^\//, "") || "home"}`}
+                >
+                  {t(item.labelKey)}
+                </NavLink>
+              </li>
+            ))}
+            {user?.role !== "student" && (
+              <li
+                className={
+                  location.pathname.startsWith("/admin")
+                    ? "current student-nav-link-active"
+                    : ""
+                }
+              >
+                <NavLink to="/admin/problems" data-testid="student-nav-admin">
+                  {t("student.nav.admin")}
+                </NavLink>
+              </li>
+            )}
+          </ul>
         </nav>
         <span className="student-user" data-testid="student-user">
           {user?.display_name} ({user?.role})

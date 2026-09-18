@@ -126,7 +126,7 @@ export default function ProblemResults() {
 
       {runsQuery.data !== undefined && runsQuery.data.items.length > 0 && (
         <>
-          <table className="data-table">
+          <table className="datatable">
             <thead>
               <tr>
                 <th />
@@ -207,8 +207,8 @@ function ProblemRunRow({
         </td>
         <td>{run.steps ?? "—"}</td>
         <td>{run.wall_ms ?? "—"}</td>
-        <td>{formatDate(run.created_at)}</td>
-        <td>{t(`results.kind.${run.kind}`)}</td>
+        <td style={{ textAlign: "left" }}>{formatDate(run.created_at)}</td>
+        <td style={{ textAlign: "left" }}>{t(`results.kind.${run.kind}`)}</td>
         <td>
           <RunActions run={run} onViewDetail={onToggle} onResubmit={onRetry} />
         </td>

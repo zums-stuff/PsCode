@@ -63,6 +63,8 @@ const runDetail: RunDetailOut = {
 
 type MockHandler = (path: string, init?: RequestInit) => unknown;
 
+const EMPTY_RUNS_PAGE = { items: [], page: 1, size: 10, total: 0 };
+
 function mockFetch(handlers: Record<string, MockHandler | unknown>) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url =
@@ -73,7 +75,12 @@ function mockFetch(handlers: Record<string, MockHandler | unknown>) {
           : input.url;
     const method = (init?.method ?? "GET").toUpperCase();
     const path = url.replace(/^https?:\/\/[^/]+/, "");
-    const handler = handlers[`${method} ${path}`] ?? handlers[`${method} *`];
+    const handler =
+      handlers[`${method} ${path}`] ??
+      handlers[`${method} *`] ??
+      (method === "GET" && path.startsWith("/api/runs?")
+        ? EMPTY_RUNS_PAGE
+        : undefined);
     if (handler === undefined) throw new Error(`No mock for ${method} ${path}`);
     const result = typeof handler === "function" ? handler(path, init) : handler;
     if (result && typeof result === "object" && "__error" in result) {

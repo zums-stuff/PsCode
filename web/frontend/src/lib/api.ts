@@ -66,6 +66,22 @@ export const api = {
   delete: <T>(path: string): Promise<T> => request<T>("DELETE", path),
 };
 
+export function listProblems(opts?: {
+  page?: number;
+  size?: number;
+  complexity?: string[];
+  solved?: "solved" | "unsolved" | "all";
+}): Promise<import("./types").Page<import("./types").ProblemListItem>> {
+  const qs = new URLSearchParams();
+  qs.set("page", String(opts?.page ?? 1));
+  qs.set("size", String(opts?.size ?? 100));
+  if (opts?.complexity?.length) qs.set("complexity", opts.complexity.join(","));
+  if (opts?.solved && opts.solved !== "all") qs.set("solved", opts.solved);
+  return api.get<import("./types").Page<import("./types").ProblemListItem>>(
+    `/api/problems?${qs.toString()}`,
+  );
+}
+
 /** List contests with pagination and per-user registration state. */
 export function listContests({
   page = 1,

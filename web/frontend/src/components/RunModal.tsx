@@ -100,7 +100,7 @@ export default function RunModal({
             />
             {cases.length > 1 && (
               <details className="run-modal-cases">
-                <summary>{t("solve.run.modal.casesSummary").replace("{count}", String(cases.length))}</summary>
+                <summary>{t("solve.run.modal.casesSummary", { count: cases.length })}</summary>
                 <table className="run-modal-cases-table">
                   <thead>
                     <tr>

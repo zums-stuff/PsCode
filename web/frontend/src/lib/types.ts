@@ -16,6 +16,12 @@ export interface ProblemListItem {
   best_verdict: string | null;
 }
 
+export interface Filters {
+  complexity: string[];
+  solved: "all" | "solved" | "unsolved";
+  query: string;
+}
+
 export interface ProblemOut {
   id: number;
   title: string;

@@ -9,6 +9,7 @@ import {
   updateForumPost,
 } from "../lib/api";
 import { t } from "../lib/i18n";
+import { useConfirm } from "../lib/confirm";
 import type { AuthUser, ForumPost } from "../lib/types";
 
 interface ThreadDetailProps {
@@ -34,6 +35,7 @@ export default function ThreadDetail({
   onBack,
 }: ThreadDetailProps) {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const isModerator = user?.role === "teacher" || user?.role === "admin";
 
   const postsQuery = useQuery({
@@ -191,10 +193,15 @@ export default function ThreadDetail({
               onEditChange={setEditingBody}
               onEditSave={saveEdit}
               onEditCancel={() => { setEditingId(null); setEditingBody(""); }}
-              onDelete={(id) => {
-                if (window.confirm(t("forum.thread.deleteConfirm"))) {
-                  deleteMutation.mutate(id);
-                }
+              onDelete={async (id) => {
+                const ok = await confirm({
+                  title: t("forum.thread.delete"),
+                  message: t("forum.thread.deleteConfirm"),
+                  confirmLabel: t("forum.thread.confirmDelete"),
+                  cancelLabel: t("forum.thread.cancelDelete"),
+                  variant: "danger",
+                });
+                if (ok) deleteMutation.mutate(id);
               }}
               onReplyStart={(id) => { setReplyTo(id); setReplyBody(""); setReplyError(null); }}
               onReplyChange={setReplyBody}

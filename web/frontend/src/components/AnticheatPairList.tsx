@@ -100,11 +100,11 @@ export default function AnticheatPairList({
             : t("admin.anticheat.pairs.empty")}
         </p>
       ) : (
-        <table>
+        <table className="datatable">
           <thead>
             <tr>
-              <th>{t("admin.anticheat.pairs.columns.runA")}</th>
-              <th>{t("admin.anticheat.pairs.columns.runB")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.anticheat.pairs.columns.runA")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.anticheat.pairs.columns.runB")}</th>
               <th>{t("admin.anticheat.pairs.columns.score")}</th>
               <th>{t("admin.anticheat.pairs.columns.actions")}</th>
             </tr>
@@ -115,11 +115,11 @@ export default function AnticheatPairList({
               const isSelected = key === selectedPairKey;
               return (
                 <tr key={key} data-testid={`pair-row-${key}`}>
-                  <td>
+                  <td style={{ textAlign: "left" }}>
                     #{pair.run_a_id}{" "}
                     <span className="hint">({pair.user_a_username})</span>
                   </td>
-                  <td>
+                  <td style={{ textAlign: "left" }}>
                     #{pair.run_b_id}{" "}
                     <span className="hint">({pair.user_b_username})</span>
                   </td>

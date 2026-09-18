@@ -194,26 +194,26 @@ export default function AdminDashboard() {
             {openAssignments.length === 0 ? (
               <p className="hint">{t("admin.dashboard.activeAssignments.empty")}</p>
             ) : (
-              <table data-testid="active-assignments-table">
+              <table className="datatable" data-testid="active-assignments-table">
                 <thead>
                   <tr>
-                    <th>{t("admin.dashboard.columns.assignment")}</th>
-                    <th>{t("admin.dashboard.columns.problem")}</th>
-                    <th>{t("admin.dashboard.columns.deadline")}</th>
+                    <th style={{ textAlign: "left" }}>{t("admin.dashboard.columns.assignment")}</th>
+                    <th style={{ textAlign: "left" }}>{t("admin.dashboard.columns.problem")}</th>
+                    <th style={{ textAlign: "left" }}>{t("admin.dashboard.columns.deadline")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {openAssignments.slice(0, RECENT_LIMIT).map((a) => (
                     <tr key={a.id}>
-                      <td>
+                      <td style={{ textAlign: "left" }}>
                         <Link to={`/admin/assignments/${a.id}`}>
                           #{a.id}
                         </Link>
                       </td>
-                      <td>
+                      <td style={{ textAlign: "left" }}>
                         {problemTitles.get(a.problem_id) ?? `#${a.problem_id}`}
                       </td>
-                      <td>{formatDeadline(a.deadline)}</td>
+                      <td style={{ textAlign: "left" }}>{formatDeadline(a.deadline)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -234,20 +234,20 @@ export default function AdminDashboard() {
             {activeContests.length === 0 ? (
               <p className="hint">{t("admin.dashboard.upcomingContests.empty")}</p>
             ) : (
-              <table data-testid="upcoming-contests-table">
+              <table className="datatable" data-testid="upcoming-contests-table">
                 <thead>
                   <tr>
-                    <th>{t("admin.dashboard.columns.contest")}</th>
-                    <th>{t("admin.dashboard.columns.status")}</th>
+                    <th style={{ textAlign: "left" }}>{t("admin.dashboard.columns.contest")}</th>
+                    <th style={{ textAlign: "left" }}>{t("admin.dashboard.columns.status")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activeContests.slice(0, RECENT_LIMIT).map((c) => (
                     <tr key={c.id}>
-                      <td>
+                      <td style={{ textAlign: "left" }}>
                         <Link to={`/admin/contests/${c.id}`}>#{c.id} · {c.title}</Link>
                       </td>
-                      <td>
+                      <td style={{ textAlign: "left" }}>
                         <ContestStatusBadge
                           startAt={c.start_at}
                           endAt={c.end_at}
@@ -273,17 +273,17 @@ export default function AdminDashboard() {
             {topRecentSubmissions.length === 0 ? (
               <p className="hint">{t("admin.dashboard.recentSubmissions.empty")}</p>
             ) : (
-              <table data-testid="recent-submissions-table">
+              <table className="datatable" data-testid="recent-submissions-table">
                 <thead>
                   <tr>
-                    <th>{t("admin.dashboard.columns.student")}</th>
+                    <th style={{ textAlign: "left" }}>{t("admin.dashboard.columns.student")}</th>
                     <th>{t("admin.dashboard.columns.verdict")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topRecentSubmissions.map(({ assignmentId, row }) => (
                     <tr key={`${assignmentId}-${row.user_id}`}>
-                      <td>
+                      <td style={{ textAlign: "left" }}>
                         {row.username}{" "}
                         <Link to={`/admin/assignments/${assignmentId}`}>
                           #{assignmentId}

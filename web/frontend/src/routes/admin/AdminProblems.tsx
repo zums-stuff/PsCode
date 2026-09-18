@@ -64,16 +64,14 @@ export default function AdminProblems() {
         </div>
       )}
 
-      {deleteError && <p className="error">{deleteError}</p>}
-
       {data && data.items.length === 0 && <p>{t("admin.problems.empty")}</p>}
 
       {data && data.items.length > 0 && (
-        <table>
+        <table className="datatable">
           <thead>
             <tr>
               <th>{t("admin.problems.columns.id")}</th>
-              <th>{t("admin.problems.columns.title")}</th>
+              <th style={{ textAlign: "left" }}>{t("admin.problems.columns.title")}</th>
               <th>{t("admin.problems.columns.complexity")}</th>
               <th>{t("admin.problems.columns.solved")}</th>
               <th>{t("admin.problems.columns.actions")}</th>
@@ -83,7 +81,7 @@ export default function AdminProblems() {
             {data.items.map((row) => (
               <tr key={row.id}>
                 <td>{row.id}</td>
-                <td>{row.title}</td>
+                <td style={{ textAlign: "left" }}>{row.title}</td>
                 <td>{row.expected_complexity}</td>
                 <td>{solvedLabel(row)}</td>
                 <td>
